@@ -1,0 +1,59 @@
+name: SonarQube Analysis (TypeScript)
+
+on:
+  workflow_call:
+    inputs:
+      enable_tests:
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      SONAR_HOST_URL:
+        required: true
+      SONAR_TOKEN:
+        required: true
+
+jobs:
+  sonarqube:
+    name: Analyze TypeScript with SonarQube
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Sonar Scanner
+        run: npm install -g sonar-scanner
+
+      # Run Tests and Generate Coverage (if enabled)
+      - name: Run Tests with Coverage
+        if: inputs.enable_tests == true
+        run: yarn test --no-cache --ci --coverage
+
+      - name: Fix lcov paths
+        if: inputs.enable_tests == true
+        run: sed -i 's#\.\./##g' coverage/lcov.info
+
+      - name: Run SonarQube Analysis
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          SONAR_CMD="sonar-scanner \
+            -Dsonar.projectKey='${{ github.event.repository.name }}' \
+            -Dsonar.sources=src \
+            -Dsonar.host.url='${{ secrets.SONAR_HOST_URL }}' \
+            -Dsonar.login='${{ secrets.SONAR_TOKEN }}'"
+
+          if [ "${{ inputs.enable_tests }}" == "true" ]; then
+            SONAR_CMD="$SONAR_CMD -Dsonar.javascript.lcov.reportPaths='coverage/lcov.info'"
+          fi
+
+          eval $SONAR_CMD
