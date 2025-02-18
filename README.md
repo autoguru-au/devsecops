@@ -23,7 +23,7 @@ name: SonarQube Analysis
 on:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   sonarqube:
@@ -52,7 +52,7 @@ name: SonarQube Analysis
 on:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   sonarqube:
