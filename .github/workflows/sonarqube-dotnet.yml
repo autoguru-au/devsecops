@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 🧹 Clean up disk space before starting
+      # Clean up disk space before starting
       - name: Clean up disk space (start)
         run: |
           sudo rm -rf /tmp/*
@@ -27,13 +27,13 @@ jobs:
           sudo rm -rf ~/.nuget
           sudo apt-get clean
 
-      # 📥 Checkout repository
+      # Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 🔧 Setup .NET (supports multiple versions)
+      # Setup .NET (supports multiple versions)
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -42,7 +42,7 @@ jobs:
             8.0.x
             7.0.x
 
-      # 📌 Install SonarScanner
+      # Install SonarScanner
       - name: Install Sonar Scanner
         run: dotnet tool install --global dotnet-sonarscanner
 
@@ -50,7 +50,7 @@ jobs:
         if: inputs.enable_tests == true
         run: dotnet tool install --global coverlet.console
 
-      # 🔍 Detect Solution File
+      # Detect Solution File
       - name: Detect Solution File
         id: detect_solution
         run: |
@@ -61,7 +61,7 @@ jobs:
           fi
           echo "SOLUTION_FILE=$SOLUTION_FILE" >> $GITHUB_ENV
 
-     # 🛠 Create Temporary Solution (if tests are disabled)
+     # Create Temporary Solution (if tests are disabled)
       - name: Create Temporary Solution (Exclude Tests)
         if: inputs.enable_tests == false
         run: |
@@ -113,7 +113,7 @@ jobs:
           name: TestResults
           path: ./TestResults/
 
-      # 🚀 Start SonarQube Analysis
+      # Start SonarQube Analysis
       - name: Start SonarQube Analysis
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -129,9 +129,9 @@ jobs:
             /d:sonar.scanner.skipJreProvisioning=true \
             /d:sonar.verbose=true \
             /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}" \
-            /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+            /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
-      # 🏗 Build Solution
+      # Build Solution
       - name: Build Solution
         run: |
           if [ "${{ inputs.enable_tests }}" == "true" ]; then
@@ -140,14 +140,14 @@ jobs:
             dotnet build ./TempSolution.sln
           fi
 
-      # ✅ Finish SonarQube Analysis
+      # Finish SonarQube Analysis
       - name: Finish SonarQube Analysis
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
 
-      # 🧹 Clean up disk space after workflow
+      # Clean up disk space after workflow
       - name: Clean up disk space (end)
         run: |
           sudo rm -rf /tmp/*
