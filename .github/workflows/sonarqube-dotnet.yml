@@ -1,6 +1,8 @@
 name: SonarQube Analysis (.NET)
 
 on:
+  workflow_dispatch:
+  
   workflow_call:
     inputs:
       enable_tests:
