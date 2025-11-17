@@ -16,7 +16,7 @@ on:
 jobs:
   sonarqube:
     name: Analyze .NET with SonarQube
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
 
     steps:
       # Clean up disk space before starting
