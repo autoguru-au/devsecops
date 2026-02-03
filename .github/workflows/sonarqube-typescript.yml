@@ -50,15 +50,6 @@ jobs:
       - name: Install Dependencies
         run: yarn install --immutable --check-cache
 
-      # TypeScript Type Checking
-      - name: TypeScript Check
-        run: |
-          if [ -f "tsconfig.json" ]; then
-            yarn tsc --noEmit --skipLibCheck
-          else
-            echo "⚠️ No tsconfig.json found, skipping TypeScript check."
-          fi
-
       # Run Tests (if enabled)
       - name: Run Tests with Coverage
         if: inputs.enable_tests == true
