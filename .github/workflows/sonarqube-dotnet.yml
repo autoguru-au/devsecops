@@ -66,7 +66,7 @@ jobs:
         run: |
           echo "Creating temporary solution excluding test and problematic projects..."
           dotnet new sln -n TempSolution -o ./ --format sln --force
-          PROJECTS=$(find ./ -name '*.csproj' | grep -vE '/test/|/tests/|.*Test.*.csproj|AutoGuru.AirwallexClient.csproj|AutoGuru.Stripe.Client.csproj|AutoGuru.ThirdPartyIntegrationDocs.csproj')
+          PROJECTS=$(find ./src -name '*.csproj' | grep -vE '/test/|/tests/|.*Test.*.csproj|AutoGuru.AirwallexClient.csproj|AutoGuru.Stripe.Client.csproj|AutoGuru.ThirdPartyIntegrationDocs.csproj')
           if [ -z "$PROJECTS" ]; then
             echo "⚠️ No non-test projects found to add to TempSolution."
             exit 1
