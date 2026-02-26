@@ -38,9 +38,8 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
+            10.0.x
             9.0.x
-            8.0.x
-            7.0.x
 
       # Install SonarScanner
       - name: Install Sonar Scanner
@@ -90,7 +89,7 @@ jobs:
             echo "❌ No test project found! Skipping test build."
             exit 1
           fi
-          dotnet build $TEST_PROJECT --configuration Debug --framework net8.0
+          dotnet build $TEST_PROJECT --configuration Debug --framework net9.0
   
       - name: Run Tests with Coverage
         if: inputs.enable_tests == true
@@ -100,14 +99,14 @@ jobs:
             echo "❌ No test project found! Skipping tests."
             exit 1
           fi
-          TEST_DLL=$(find ./ -name '*.dll' | grep '/bin/Debug/net8.0/' | grep 'Test' | head -n 1)
+          TEST_DLL=$(find ./ -name '*.dll' | grep '/bin/Debug/net9.0/' | grep 'Test' | head -n 1)
           if [ -z "$TEST_DLL" ]; then
             echo "❌ No test DLL found! Skipping coverage."
             exit 1
           fi
           coverlet $TEST_DLL \
             --target "dotnet" \
-            --targetargs "test $TEST_PROJECT --no-build --framework net8.0 --logger trx --results-directory ./TestResults/" \
+            --targetargs "test $TEST_PROJECT --no-build --framework net9.0 --logger trx --results-directory ./TestResults/" \
             --output ./TestResults/Coverage/coverage.opencover.xml \
             --format opencover
 
