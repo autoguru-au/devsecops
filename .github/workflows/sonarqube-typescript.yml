@@ -7,6 +7,10 @@ on:
         required: false
         type: boolean
         default: true
+      package_manager:
+        required: false
+        type: string
+        default: 'yarn'
     secrets:
       SONAR_HOST_URL:
         required: true
@@ -48,7 +52,14 @@ jobs:
 
       # Install dependencies
       - name: Install Dependencies
-        run: yarn install --immutable --check-cache
+        run: |
+          if [ "${{ inputs.package_manager }}" = "bun" ]; then
+            curl -fsSL https://bun.sh/install | bash
+            export PATH="$HOME/.bun/bin:$PATH"
+            bun install --frozen-lockfile
+          else
+            yarn install --immutable --check-cache
+          fi
 
       # Run Tests (if enabled)
       - name: Run Tests with Coverage
