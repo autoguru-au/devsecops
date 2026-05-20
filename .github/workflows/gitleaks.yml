@@ -27,6 +27,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  actions: read
 
 jobs:
   gitleaks:
@@ -92,8 +93,12 @@ jobs:
           path: gitleaks.sarif
           if-no-files-found: ignore
 
+      # Continue-on-error so consumer repos without GitHub Code Security
+      # enabled (Phase 1 default for many private repos) do not see a red job.
+      # The SARIF artefact uploaded above is always retained for triage.
       - name: Upload SARIF to GitHub code scanning
         if: always() && hashFiles('gitleaks.sarif') != ''
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gitleaks.sarif
