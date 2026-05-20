@@ -1,0 +1,100 @@
+name: Gitleaks (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      fail_on_finding:
+        description: "If true, fail the job when secrets are found. Phase 1 default: false."
+        required: false
+        type: boolean
+        default: false
+      config_path:
+        description: "Path to a .gitleaks.toml config (optional). Empty means use gitleaks defaults."
+        required: false
+        type: string
+        default: ""
+      gitleaks_version:
+        description: "Pinned gitleaks release tag (with leading v)."
+        required: false
+        type: string
+        default: "v8.30.1"
+      gitleaks_sha256:
+        description: "SHA256 of the linux_x64 tarball for gitleaks_version. Defaults match v8.30.1; update when bumping version."
+        required: false
+        type: string
+        default: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Australia/Brisbane
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: ${{ inputs.gitleaks_version }}
+          GITLEAKS_SHA256: ${{ inputs.gitleaks_sha256 }}
+        run: |
+          set -euo pipefail
+          version_no_v="${GITLEAKS_VERSION#v}"
+          tarball="gitleaks_${version_no_v}_linux_x64.tar.gz"
+          url="https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/${tarball}"
+          curl -fsSL --retry 3 --retry-delay 2 -o "${tarball}" "${url}"
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum --check --strict -
+          tar -xzf "${tarball}" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f "${tarball}" gitleaks
+          gitleaks version
+
+      - name: Run gitleaks
+        id: scan
+        env:
+          GITLEAKS_CONFIG_PATH: ${{ inputs.config_path }}
+          FAIL_ON_FINDING: ${{ inputs.fail_on_finding }}
+        run: |
+          set -uo pipefail
+          args=(detect --source=. --no-banner --redact --report-format=sarif --report-path=gitleaks.sarif)
+          if [ -n "${GITLEAKS_CONFIG_PATH}" ]; then
+            args+=(--config="${GITLEAKS_CONFIG_PATH}")
+          fi
+          set +e
+          gitleaks "${args[@]}"
+          rc=$?
+          set -e
+          echo "gitleaks_exit=${rc}" >> "$GITHUB_OUTPUT"
+          # gitleaks exit codes: 0 = no leaks, 1 = leaks found, >1 = error.
+          if [ "${rc}" -gt 1 ]; then
+            echo "::error::gitleaks exited with code ${rc} (runtime error, not a finding)"
+            exit "${rc}"
+          fi
+          if [ "${rc}" -eq 1 ]; then
+            echo "::warning::gitleaks detected potential secrets. See SARIF artefact and the Security tab."
+            if [ "${FAIL_ON_FINDING}" = "true" ]; then
+              exit 1
+            fi
+          fi
+          exit 0
+
+      - name: Upload SARIF artefact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-sarif
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+
+      - name: Upload SARIF to GitHub code scanning
+        if: always() && hashFiles('gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
