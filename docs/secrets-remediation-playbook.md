@@ -40,10 +40,10 @@ The playbook is deliberately **conservative on speed, strict on completion**: an
 
 | Severity | Criteria | Rotation SLA from triage |
 |---|---|---|
-| **Critical** | Any of: production AWS access key, production database credential, payment processor key (Stripe live), PII access token, Auth0 production tenant secret, signing key with active sessions, repo is **public**, or **out-of-band exposure confirmed**. | **8 hours** |
-| **High** | Non-prod AWS access key, internal service API token with elevated scope, Mandrill/email-sending key, third-party API token with write scope, repo is private but with broad org-wide read. | **48 hours** |
-| **Medium** | Observability/monitoring credentials (Datadog, Sentry, New Relic), read-only third-party tokens, dev/staging database creds without prod data. | **5 days** |
-| **Low** | Already-known-expired credentials confirmed by audit, internal-only tooling tokens with no external reachability, demo / test fixtures committed accidentally where the credential never existed in any system. | **14 days** |
+| **Critical** | Active production secret with broad blast radius: production AWS access key, production database credential, payment processor key (Stripe live), PII access token, Auth0 production tenant secret, signing key with active sessions, repo is **public**, or **out-of-band exposure confirmed**. | **24 hours** |
+| **High** | Production-adjacent or recently active: non-prod AWS access key, internal service API token with elevated scope, Mandrill/email-sending key, third-party API token with write scope, repo is private but with broad org-wide read. | **72 hours** |
+| **Medium** | Test, dev, or lower-impact: observability/monitoring credentials (Datadog, Sentry, New Relic), read-only third-party tokens, dev/staging database creds without prod data. | **7 days** |
+| **Low** | Likely false positive or already-rotated artefact: already-known-expired credentials confirmed by audit, internal-only tooling tokens with no external reachability, demo / test fixtures committed accidentally where the credential never existed in any system. | **Best-effort triage** |
 
 SLA starts when the finding is **triaged** (severity assigned), not when it is detected. Triage SLA is **4 business hours** for any finding regardless of severity.
 
@@ -51,7 +51,7 @@ SLA starts when the finding is **triaged** (severity assigned), not when it is d
 
 - The owner records the triage timestamp in the incident ticket (see Section 7) at the moment severity is set.
 - The Security Lead audits open incidents weekly. Any open incident past SLA is escalated to the CISO.
-- Rationale: chosen scale is conservative against operational reality at AutoGuru as of 2026-05. SLAs are a programme decision and will be reviewed at Phase 2 of COM-108. Reference: Drata **DCF-24** (SLA for security bugs).
+- Rationale: chosen scale is pragmatic against operational reality at AutoGuru as of 2026-06 and aligned with the values approved during the COM-121 business-case review. SLAs are a programme decision and will be revisited at Phase 2 of COM-108. Reference: Drata **DCF-24** (SLA for security bugs).
 
 ### 4.3 Severity decision aid
 
