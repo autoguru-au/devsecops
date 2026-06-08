@@ -194,7 +194,7 @@ A finding is **never closed** while the old credential is still valid at the iss
 
 **External notification** (customers, regulators) is triggered **only** by confirmed out-of-band exposure of customer data. In that case the Security Lead escalates to the CISO, and the procedure handed off is **Drata DCF-135 — Notice of Breach to Affected Users**. This playbook does not cover the external notification flow.
 
-**Compliance evidence** uploads (Drata "Reports & Docs") happen at closure if the incident touches any of: DCF-17, DCF-24, DCF-279, DCF-783. See Appendix A.
+**Compliance evidence** uploads (Drata "Reports & Docs") happen at closure if the incident touches any of: DCF-17, DCF-24, DCF-278, DCF-783. See Appendix A.
 
 ### 6.8 Closure
 
@@ -221,7 +221,7 @@ The Security Lead approves closure.
 | Slack `#security-incidents` (or equivalent — **name TBD**) | Triage notification and closure summary | **Open action — channel does not exist yet (Appendix B.2)** |
 | Jira project COM, label `incident-secret` | Incident ticket of record. One ticket per finding. | Existing project; label introduced by this playbook. |
 | GitHub Code Scanning Security tab (per repo) | Finding lifecycle: open / fixed / dismissed | Existing |
-| Drata "Reports & Docs" | Compliance evidence at closure (when DCF-17 / DCF-24 / DCF-279 / DCF-783 are touched) | Existing |
+| Drata "Reports & Docs" | Compliance evidence at closure (when DCF-17 / DCF-24 / DCF-278 / DCF-783 are touched) | Existing |
 
 Until the Slack channel exists (Appendix B.2), the Security Lead is notified directly (DM or email). The first incident under this playbook is gating on channel creation, not blocked by it.
 
@@ -268,7 +268,7 @@ Walkthrough:
 5. **Invalidate** — `aws iam delete-access-key --access-key-id <old-id>`; confirm with `aws iam list-access-keys --user-name <user>` (old id no longer listed).
 6. **Verify** — Authorised actor attempts an API call with the leaked key id from a controlled environment, expects `InvalidAccessKeyId`. Search CloudTrail for `userIdentity.accessKeyId == <leaked>` between earliest known leak time and the invalidation timestamp; look for foreign IPs or unusual access patterns.
 7. **Communicate** — Triage post (severity Critical/High) and closure post in the security channel.
-8. **Closure** — Ticket fields completed; Drata evidence uploaded under DCF-783 (rotation) and DCF-279 (key retirement).
+8. **Closure** — Ticket fields completed; Drata evidence uploaded under DCF-783 (rotation) and DCF-278 (key retirement).
 
 > **Note on detection:** Gitleaks v8.30.1 default rules deliberately exclude the well-known AWS canonical example `AKIAIOSFODNN7EXAMPLE` from matching. This is correct behaviour — that value is published by AWS as a documentation placeholder, never accepted by any real service. Real production AWS keys still match.
 
@@ -342,7 +342,7 @@ Both fixes are part of the COM-115 PR ([devsecops PR #5](https://github.com/auto
 | **DCF-17** | Remediation Plan | This playbook is the documented remediation plan for the secret-leak class of finding |
 | **DCF-135** | Notice of Breach to Affected Users | Section 6.7 (external notification trigger) |
 | **DCF-8** | Disclosure Process for Customers | Section 6.7 (external notification) |
-| **DCF-279** | Key Retirement | Section 6.5 (invalidation) |
+| **DCF-278** | Key Retirement | Section 6.5 (invalidation) |
 | **DCF-229** | Vendor Default Accounts | Out of scope here, but findings of default vendor credentials should be treated under this playbook's severity matrix |
 
 ## Appendix B — Open programme actions
