@@ -56,14 +56,58 @@ jobs:
           rm -f "${tarball}" gitleaks
           gitleaks version
 
-      - name: Run gitleaks
+      - name: Determine scan range
+        id: range
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_BASE_REF: ${{ github.base_ref }}
+          GH_EVENT_BEFORE: ${{ github.event.before }}
+          GH_EVENT_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          # Branch on event_name so PR/push events scan only their commit range and
+          # workflow_dispatch / schedule keep the full-history baseline behaviour.
+          case "${GH_EVENT_NAME}" in
+            pull_request|pull_request_target)
+              # Make the base ref locally available. fetch-depth: 0 already covers
+              # this on the default checkout, but the guard helps if a caller ever
+              # overrides fetch-depth to something shallower.
+              git fetch origin "+refs/heads/${GH_BASE_REF}:refs/remotes/origin/${GH_BASE_REF}" --depth=200 || true
+              log_opts="origin/${GH_BASE_REF}..HEAD"
+              scan_mode="diff (pull_request: origin/${GH_BASE_REF}..HEAD)"
+              ;;
+            push)
+              if [ -z "${GH_EVENT_BEFORE:-}" ] || [ "${GH_EVENT_BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+                # First push on a new branch: no useful 'before' commit, fall back to full scan.
+                log_opts=""
+                scan_mode="full (push: first commit on branch)"
+              else
+                log_opts="${GH_EVENT_BEFORE}..${GH_EVENT_AFTER}"
+                scan_mode="diff (push: ${GH_EVENT_BEFORE:0:7}..${GH_EVENT_AFTER:0:7})"
+              fi
+              ;;
+            *)
+              # workflow_dispatch, schedule, or any other event: full-history baseline.
+              log_opts=""
+              scan_mode="full (${GH_EVENT_NAME})"
+              ;;
+          esac
+          echo "log_opts=${log_opts}" >> "$GITHUB_OUTPUT"
+          echo "scan_mode=${scan_mode}" >> "$GITHUB_OUTPUT"
+          echo "Scan mode: ${scan_mode}"
+
+      - name: Run gitleaks (${{ steps.range.outputs.scan_mode }})
         id: scan
         env:
           GITLEAKS_CONFIG_PATH: ${{ inputs.config_path }}
           FAIL_ON_FINDING: ${{ inputs.fail_on_finding }}
+          LOG_OPTS: ${{ steps.range.outputs.log_opts }}
         run: |
           set -uo pipefail
           args=(detect --source=. --no-banner --redact --report-format=sarif --report-path=gitleaks.sarif)
+          if [ -n "${LOG_OPTS:-}" ]; then
+            args+=(--log-opts="${LOG_OPTS}")
+          fi
           if [ -n "${GITLEAKS_CONFIG_PATH}" ]; then
             args+=(--config="${GITLEAKS_CONFIG_PATH}")
           fi
