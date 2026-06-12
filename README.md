@@ -70,8 +70,18 @@ jobs:
 #### ✅ Steps Included:
 - 📥 Checkout repository with full history (`fetch-depth: 0`)
 - ⬇️ Download a version-pinned Gitleaks binary and verify its SHA256
+- 🎯 Determine the scan range from the triggering event (see *Scan modes* below)
 - 🔎 Run `gitleaks detect` with `--redact` (logs never expose secret material)
 - 📤 Upload the SARIF report as an artefact and to GitHub code scanning
+
+#### 🎯 Scan modes:
+The workflow chooses what to scan based on `github.event_name` so that PR checks stay fast on monorepos while baseline coverage is preserved:
+
+| Trigger | Range scanned | Typical use |
+|---|---|---|
+| `pull_request` / `pull_request_target` | `origin/<base_ref>..HEAD` | PR gate: only commits introduced by the PR. Fast even on large histories. |
+| `push` | `<before>..<after>` (or full history on the first push to a new branch) | Per-push check on default branch and feature branches. |
+| `workflow_dispatch`, `schedule`, any other event | Full git history | Baseline scan: surfaces historical findings. Use this from a weekly cron once a baseline is established. |
 
 #### ⚙️ Inputs:
 | Name | Default | Description |
