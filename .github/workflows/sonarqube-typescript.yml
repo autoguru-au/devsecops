@@ -7,6 +7,10 @@ on:
         required: false
         type: boolean
         default: true
+      package_manager:
+        required: false
+        type: string
+        default: 'yarn'
     secrets:
       SONAR_HOST_URL:
         required: true
@@ -48,13 +52,20 @@ jobs:
 
       # Install dependencies
       - name: Install Dependencies
-        run: yarn install --immutable --check-cache
+        run: |
+          if [ "${{ inputs.package_manager }}" = "bun" ]; then
+            curl -fsSL https://bun.sh/install | bash
+            export PATH="$HOME/.bun/bin:$PATH"
+            bun install --frozen-lockfile
+          else
+            yarn install --immutable --check-cache
+          fi
 
       # Run Tests (if enabled)
       - name: Run Tests with Coverage
         if: inputs.enable_tests == true
         run: |
-          if yarn test:ci; then
+          if ${{ inputs.package_manager == 'bun' && 'bun run test:ci' || 'yarn test:ci' }}; then
             echo "TESTS_PASSED=true" >> $GITHUB_ENV
           else
             echo "Tests failed, skipping coverage..."
