@@ -1,0 +1,8 @@
+# Force LF under netbird/: this subtree deploys to Linux (EC2 user-data, docker, CI).
+# CRLF in a bash user-data script breaks the shebang on the instance. The .cs files embed
+# those scripts as raw content, so they must be LF too.
+* text=auto eol=lf
+*.sh text eol=lf
+*.cs text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
