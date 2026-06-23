@@ -16,3 +16,4 @@ jobs:
     uses: ./.github/workflows/gitleaks.yml
     with:
       fail_on_finding: false
+      config_path: .gitleaks.toml
