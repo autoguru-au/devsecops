@@ -6,6 +6,8 @@ dnf install -y docker git
 systemctl enable --now docker
 
 # Install Docker Compose plugin
+# TODO (before production cutover): pin to a fixed, checksum-verified Compose release instead
+# of :latest so instance builds are reproducible and supply-chain integrity is verified.
 mkdir -p /usr/local/lib/docker/cli-plugins
 curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
   -o /usr/local/lib/docker/cli-plugins/docker-compose

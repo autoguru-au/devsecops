@@ -59,6 +59,8 @@ public class NetbirdControlPlaneStack : Stack
         // the control plane from arbitrary, unpredictable networks (home ISPs, mobile, roaming), so
         // they cannot be restricted to a known corporate CIDR. Do NOT scope these to a CIDR.
         sg.AddIngressRule(Peer.AnyIpv4(), Port.Tcp(443), "HTTPS -- management API and dashboard");
+        // "Lets Encrypt" intentionally has no apostrophe: AWS rejects apostrophes in
+        // security-group rule descriptions (the deploy fails with "Invalid rule description").
         sg.AddIngressRule(Peer.AnyIpv4(), Port.Tcp(80), "Lets Encrypt ACME HTTP challenge");
         sg.AddIngressRule(Peer.AnyIpv4(), Port.Tcp(33073), "Management gRPC -- peer client connections");
         sg.AddIngressRule(Peer.AnyIpv4(), Port.Tcp(10000), "Signal server -- WebRTC P2P setup");

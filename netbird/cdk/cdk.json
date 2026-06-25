@@ -1,5 +1,5 @@
 {
-  "app": "dotnet run --project Netbird.Cdk.csproj",
+  "app": "dotnet run -c Release --project Netbird.Cdk.csproj",
   "watch": {
     "include": ["**"],
     "exclude": [
