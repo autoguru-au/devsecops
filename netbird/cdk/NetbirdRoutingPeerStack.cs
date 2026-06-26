@@ -40,16 +40,13 @@ public class NetbirdRoutingPeerStack : Stack
         });
         setupKeySecret.GrantRead(instanceRole);
 
-        // Dedicated VPC for the routing peer (public subnet + EIP, no NAT). Isolated from shared
-        // services; the peer only needs internet egress to reach Cloudflare via its EIP.
-        var vpc = new Vpc(this, "Vpc", new VpcProps
+        // Routing peer runs in the shared-services VPC public-subnet tier (same VPC as the control
+        // plane and the Pritunl VPN). Being in the shared public subnets puts it inside the source
+        // CIDRs the workload RDS security groups already allowlist, and lets the shared RDS admit it
+        // by security-group reference, which is how developers reach SQL Server RDS over the VPN.
+        var vpc = Vpc.FromLookup(this, "SharedVpc", new VpcLookupOptions
         {
-            MaxAzs = 1,
-            NatGateways = 0,
-            SubnetConfiguration =
-            [
-                new SubnetConfiguration { Name = "public", SubnetType = SubnetType.PUBLIC, CidrMask = 24 },
-            ],
+            VpcId = Shared.VpcId,
         });
 
         var sg = new SecurityGroup(this, "RoutingPeerSg", new SecurityGroupProps
@@ -64,6 +61,9 @@ public class NetbirdRoutingPeerStack : Stack
         {
             Vpc = vpc,
             VpcSubnets = new SubnetSelection { SubnetType = SubnetType.PUBLIC },
+            // Shared public subnets do not auto-assign public IPs, so request one explicitly:
+            // the user-data needs internet egress on first boot before the EIP is associated.
+            AssociatePublicIpAddress = true,
             InstanceType = InstanceType.Of(InstanceClass.T3, InstanceSize.MICRO),
             MachineImage = MachineImage.LatestAmazonLinux2023(),
             SecurityGroup = sg,
@@ -107,6 +107,28 @@ public class NetbirdRoutingPeerStack : Stack
             ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
         });
         statusAlarm.AddAlarmAction(new Ec2Action(Ec2InstanceAction.RECOVER));
+
+        // CPU utilization alarm -> shared Slack topic. Satisfies the Drata "Infrastructure Instance
+        // CPU Monitored" control and matches the platform's alarm-to-Slack convention.
+        var cpuAlarm = new Alarm(this, "RoutingPeerCpuAlarm", new AlarmProps
+        {
+            Metric = new Metric(new MetricProps
+            {
+                Namespace = "AWS/EC2",
+                MetricName = "CPUUtilization",
+                DimensionsMap = new Dictionary<string, string> { { "InstanceId", instance.InstanceId } },
+                Period = Duration.Minutes(5),
+                Statistic = "Average",
+            }),
+            Threshold = 80,
+            EvaluationPeriods = 2,
+            DatapointsToAlarm = 2,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = TreatMissingData.IGNORE,
+        });
+        var slackTopic = Shared.SlackNotifierTopic(this);
+        cpuAlarm.AddAlarmAction(new SnsAction(slackTopic));
+        cpuAlarm.AddOkAction(new SnsAction(slackTopic));
 
         _ = new CfnOutput(this, "ElasticIp", new CfnOutputProps
         {

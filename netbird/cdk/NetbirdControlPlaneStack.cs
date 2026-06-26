@@ -36,16 +36,13 @@ public class NetbirdControlPlaneStack : Stack
         });
         entraSecret.GrantRead(instanceRole);
 
-        // Dedicated VPC for the VPN edge: a public-facing control plane is isolated from the
-        // shared-services network. Public subnet only (the instance carries an EIP); no NAT needed.
-        var vpc = new Vpc(this, "Vpc", new VpcProps
+        // Netbird runs in the shared-services VPC public-subnet tier, next to the Pritunl VPN it
+        // replaces (the ITOC/Thoughtworks Well-Architected layout). Reusing the shared VPC means it
+        // inherits the vetted peering + RDS allowlist fabric and the VPC's flow logs, and can be
+        // admitted to the shared SQL Server RDS by security-group reference.
+        var vpc = Vpc.FromLookup(this, "SharedVpc", new VpcLookupOptions
         {
-            MaxAzs = 1,
-            NatGateways = 0,
-            SubnetConfiguration =
-            [
-                new SubnetConfiguration { Name = "public", SubnetType = SubnetType.PUBLIC, CidrMask = 24 },
-            ],
+            VpcId = Shared.VpcId,
         });
 
         var sg = new SecurityGroup(this, "ControlPlaneSg", new SecurityGroupProps
@@ -73,6 +70,9 @@ public class NetbirdControlPlaneStack : Stack
         {
             Vpc = vpc,
             VpcSubnets = new SubnetSelection { SubnetType = SubnetType.PUBLIC },
+            // Shared public subnets do not auto-assign public IPs, so request one explicitly:
+            // the user-data needs internet egress on first boot before the EIP is associated.
+            AssociatePublicIpAddress = true,
             InstanceType = InstanceType.Of(InstanceClass.T3, InstanceSize.SMALL),
             MachineImage = MachineImage.LatestAmazonLinux2023(),
             SecurityGroup = sg,
@@ -92,6 +92,10 @@ public class NetbirdControlPlaneStack : Stack
             ],
             UserData = UserData.Custom(EmbeddedScript.Read("control-plane-user-data.sh")),
         });
+
+        // Control plane holds the management state (peers, ACLs), so it is enrolled in the shared
+        // account's AWS Backup plan by tag (matches the platform VPN/RDS backup convention).
+        Amazon.CDK.Tags.Of(instance).Add("backup", "true");
 
         // Elastic IP - stable DNS target for netbird.autoguru.com.au.
         var eip = new CfnEIP(this, "ControlPlaneEip", new CfnEIPProps
@@ -115,6 +119,28 @@ public class NetbirdControlPlaneStack : Stack
             ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
         });
         statusAlarm.AddAlarmAction(new Ec2Action(Ec2InstanceAction.RECOVER));
+
+        // CPU utilization alarm -> shared Slack topic. Satisfies the Drata "Infrastructure Instance
+        // CPU Monitored" control and matches the platform's alarm-to-Slack convention.
+        var cpuAlarm = new Alarm(this, "ControlPlaneCpuAlarm", new AlarmProps
+        {
+            Metric = new Metric(new MetricProps
+            {
+                Namespace = "AWS/EC2",
+                MetricName = "CPUUtilization",
+                DimensionsMap = new Dictionary<string, string> { { "InstanceId", instance.InstanceId } },
+                Period = Duration.Minutes(5),
+                Statistic = "Average",
+            }),
+            Threshold = 80,
+            EvaluationPeriods = 2,
+            DatapointsToAlarm = 2,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = TreatMissingData.IGNORE,
+        });
+        var slackTopic = Shared.SlackNotifierTopic(this);
+        cpuAlarm.AddAlarmAction(new SnsAction(slackTopic));
+        cpuAlarm.AddOkAction(new SnsAction(slackTopic));
 
         _ = new CfnOutput(this, "ControlPlaneIp", new CfnOutputProps
         {
