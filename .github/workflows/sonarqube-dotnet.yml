@@ -53,12 +53,9 @@ jobs:
       - name: Detect Solution File
         id: detect_solution
         run: |
-          SOLUTION_FILE=$(find . -name '*.sln' | head -n 1)
+          SOLUTION_FILE=$(find . -name '*.slnx' | head -n 1)
           if [ -z "$SOLUTION_FILE" ]; then
-            SOLUTION_FILE=$(find . -name '*.slnx' | head -n 1)
-          fi
-          if [ -z "$SOLUTION_FILE" ]; then
-            echo "❌ No solution file (.sln or .slnx) found! Make sure your repository has a .sln or .slnx file."
+            echo "❌ No .slnx solution file found! Make sure your repository has a .slnx file."
             exit 1
           fi
           echo "SOLUTION_FILE=$SOLUTION_FILE" >> $GITHUB_ENV
