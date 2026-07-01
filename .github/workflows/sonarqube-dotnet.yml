@@ -53,9 +53,9 @@ jobs:
       - name: Detect Solution File
         id: detect_solution
         run: |
-          SOLUTION_FILE=$(find . -name '*.sln' | head -n 1)
+          SOLUTION_FILE=$(find . -name '*.slnx' | head -n 1)
           if [ -z "$SOLUTION_FILE" ]; then
-            echo "❌ No solution file found! Make sure your repository has a .sln file."
+            echo "❌ No .slnx solution file found! Make sure your repository has a .slnx file."
             exit 1
           fi
           echo "SOLUTION_FILE=$SOLUTION_FILE" >> $GITHUB_ENV
@@ -65,20 +65,20 @@ jobs:
         if: inputs.enable_tests == false
         run: |
           echo "Creating temporary solution excluding test and problematic projects..."
-          dotnet new sln -n TempSolution -o ./ --format sln --force
+          dotnet new sln -n TempSolution -o ./ --format slnx --force
           PROJECTS=$(find ./src -name '*.csproj' | grep -vE '/test/|/tests/|.*Test.*.csproj|AutoGuru.AirwallexClient.csproj|AutoGuru.Stripe.Client.csproj|AutoGuru.ThirdPartyIntegrationDocs.csproj')
           if [ -z "$PROJECTS" ]; then
             echo "⚠️ No non-test projects found to add to TempSolution."
             exit 1
           fi
-          echo "$PROJECTS" | xargs dotnet sln ./TempSolution.sln add
+          echo "$PROJECTS" | xargs dotnet sln ./TempSolution.slnx add
       
       - name: Restore Dependencies
         run: |
           if [ "${{ inputs.enable_tests }}" == "true" ]; then
             dotnet restore ${{ env.SOLUTION_FILE }}
           else
-            dotnet restore ./TempSolution.sln --no-cache
+            dotnet restore ./TempSolution.slnx --no-cache
           fi
 
       - name: Build Tests
@@ -89,7 +89,7 @@ jobs:
             echo "❌ No test project found! Skipping test build."
             exit 1
           fi
-          dotnet build $TEST_PROJECT --configuration Debug --framework net9.0
+          dotnet build $TEST_PROJECT --configuration Debug
   
       - name: Run Tests with Coverage
         if: inputs.enable_tests == true
@@ -99,14 +99,14 @@ jobs:
             echo "❌ No test project found! Skipping tests."
             exit 1
           fi
-          TEST_DLL=$(find ./ -name '*.dll' | grep '/bin/Debug/net9.0/' | grep 'Test' | head -n 1)
+          TEST_DLL=$(find ./ -name '*.dll' | grep -E '/bin/Debug/net[0-9]+\.[0-9]+/' | grep 'Test' | head -n 1)
           if [ -z "$TEST_DLL" ]; then
             echo "❌ No test DLL found! Skipping coverage."
             exit 1
           fi
           coverlet $TEST_DLL \
             --target "dotnet" \
-            --targetargs "test $TEST_PROJECT --no-build --framework net9.0 --logger trx --results-directory ./TestResults/" \
+            --targetargs "test $TEST_PROJECT --no-build --logger trx --results-directory ./TestResults/" \
             --output ./TestResults/Coverage/coverage.opencover.xml \
             --format opencover
 
@@ -141,7 +141,7 @@ jobs:
           if [ "${{ inputs.enable_tests }}" == "true" ]; then
             dotnet build ${{ env.SOLUTION_FILE }}
           else
-            dotnet build ./TempSolution.sln
+            dotnet build ./TempSolution.slnx
           fi
 
       # Finish SonarQube Analysis
