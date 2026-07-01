@@ -68,20 +68,20 @@ jobs:
         if: inputs.enable_tests == false
         run: |
           echo "Creating temporary solution excluding test and problematic projects..."
-          dotnet new sln -n TempSolution -o ./ --format sln --force
+          dotnet new sln -n TempSolution -o ./ --format slnx --force
           PROJECTS=$(find ./src -name '*.csproj' | grep -vE '/test/|/tests/|.*Test.*.csproj|AutoGuru.AirwallexClient.csproj|AutoGuru.Stripe.Client.csproj|AutoGuru.ThirdPartyIntegrationDocs.csproj')
           if [ -z "$PROJECTS" ]; then
             echo "⚠️ No non-test projects found to add to TempSolution."
             exit 1
           fi
-          echo "$PROJECTS" | xargs dotnet sln ./TempSolution.sln add
+          echo "$PROJECTS" | xargs dotnet sln ./TempSolution.slnx add
       
       - name: Restore Dependencies
         run: |
           if [ "${{ inputs.enable_tests }}" == "true" ]; then
             dotnet restore ${{ env.SOLUTION_FILE }}
           else
-            dotnet restore ./TempSolution.sln --no-cache
+            dotnet restore ./TempSolution.slnx --no-cache
           fi
 
       - name: Build Tests
@@ -144,7 +144,7 @@ jobs:
           if [ "${{ inputs.enable_tests }}" == "true" ]; then
             dotnet build ${{ env.SOLUTION_FILE }}
           else
-            dotnet build ./TempSolution.sln
+            dotnet build ./TempSolution.slnx
           fi
 
       # Finish SonarQube Analysis
