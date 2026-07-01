@@ -55,7 +55,10 @@ jobs:
         run: |
           SOLUTION_FILE=$(find . -name '*.sln' | head -n 1)
           if [ -z "$SOLUTION_FILE" ]; then
-            echo "❌ No solution file found! Make sure your repository has a .sln file."
+            SOLUTION_FILE=$(find . -name '*.slnx' | head -n 1)
+          fi
+          if [ -z "$SOLUTION_FILE" ]; then
+            echo "❌ No solution file (.sln or .slnx) found! Make sure your repository has a .sln or .slnx file."
             exit 1
           fi
           echo "SOLUTION_FILE=$SOLUTION_FILE" >> $GITHUB_ENV
@@ -89,7 +92,7 @@ jobs:
             echo "❌ No test project found! Skipping test build."
             exit 1
           fi
-          dotnet build $TEST_PROJECT --configuration Debug --framework net9.0
+          dotnet build $TEST_PROJECT --configuration Debug
   
       - name: Run Tests with Coverage
         if: inputs.enable_tests == true
@@ -99,14 +102,14 @@ jobs:
             echo "❌ No test project found! Skipping tests."
             exit 1
           fi
-          TEST_DLL=$(find ./ -name '*.dll' | grep '/bin/Debug/net9.0/' | grep 'Test' | head -n 1)
+          TEST_DLL=$(find ./ -name '*.dll' | grep -E '/bin/Debug/net[0-9]+\.[0-9]+/' | grep 'Test' | head -n 1)
           if [ -z "$TEST_DLL" ]; then
             echo "❌ No test DLL found! Skipping coverage."
             exit 1
           fi
           coverlet $TEST_DLL \
             --target "dotnet" \
-            --targetargs "test $TEST_PROJECT --no-build --framework net9.0 --logger trx --results-directory ./TestResults/" \
+            --targetargs "test $TEST_PROJECT --no-build --logger trx --results-directory ./TestResults/" \
             --output ./TestResults/Coverage/coverage.opencover.xml \
             --format opencover
 
