@@ -1,0 +1,20 @@
+title = "AutoGuru devsecops gitleaks config"
+
+# Keep all of gitleaks' built-in rules; this file only adds a narrow allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Public Microsoft Entra ID OIDC identifiers used by the Netbird control-plane setup
+(netbird/scripts/control-plane-user-data.sh). The application (client) ID, tenant ID
+and audience are NOT secrets: they are public identifiers that ship in client config.
+The only secret, the client secret, is pulled from AWS Secrets Manager at runtime
+(NETBIRD_AUTH_CLIENT_SECRET=${ENTRA_SECRET}) and is never committed. These two exact
+GUIDs are allowlisted so the generic-api-key rule stops flagging them; a genuinely
+sensitive value would still be caught (this is value-scoped, not path-scoped).
+"""
+regexes = [
+  '''5853144b-3c6f-4e39-a5b0-df1c3efcdcb1''',
+  '''4542d3b9-a2ab-47a6-bc7a-1c25894c1adf''',
+]

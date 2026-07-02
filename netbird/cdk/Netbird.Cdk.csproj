@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Netbird.Cdk</RootNamespace>
+    <AssemblyName>Netbird.Cdk</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Amazon.CDK.Lib" Version="2.140.0" />
+    <PackageReference Include="Constructs" Version="[10.0.0,11.0.0)" />
+  </ItemGroup>
+
+  <!-- EC2 user-data bash scripts are embedded so they ship inside the assembly (no working-dir
+       dependency at synth time) while staying real .sh files: readable, lintable, and LF-enforced
+       via .gitattributes so a CRLF checkout on Windows cannot break the shebang on the instance. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\scripts\control-plane-user-data.sh">
+      <LogicalName>control-plane-user-data.sh</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\scripts\routing-peer-user-data.sh">
+      <LogicalName>routing-peer-user-data.sh</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

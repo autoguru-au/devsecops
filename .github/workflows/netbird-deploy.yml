@@ -1,0 +1,88 @@
+name: Netbird Infrastructure
+
+# CDK app (C#) for the self-hosted Netbird VPN (control plane + routing peer) in the
+# autoguru-shared account. Scoped to the netbird/ subtree so unrelated devsecops changes
+# (workflows, docs) never touch this infrastructure.
+#
+# - Pull requests that touch netbird/** run `cdk diff` (read-only, no changes).
+# - Deploys are MANUAL (workflow_dispatch) so infra is never applied implicitly by a
+#   merge to main; an operator triggers the deploy and reviews the diff in the run log.
+#
+# Requires the repository secret AWS_DEPLOY_ROLE_ARN to be the ARN of an IAM role in
+# the shared account (791686214595) that this repo can assume via GitHub OIDC and that
+# can drive the CDK deploy roles (the shared GitHubActionsRole already trusts
+# repo:autoguru-au/* via OIDC).
+
+on:
+  pull_request:
+    paths:
+      - 'netbird/**'
+      - '.github/workflows/netbird-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'CDK action to run'
+        required: true
+        default: 'diff'
+        type: choice
+        options:
+          - diff
+          - deploy
+
+permissions:
+  id-token: write   # OIDC auth to AWS -- no stored access keys
+  contents: read
+
+defaults:
+  run:
+    working-directory: netbird/cdk
+
+jobs:
+  cdk:
+    name: CDK ${{ github.event_name == 'pull_request' && 'diff' || inputs.action }}
+    runs-on: ubuntu-latest
+    env:
+      # Mapped to an env var so steps can detect whether the deploy role is configured.
+      # Until an admin sets this repo secret, the AWS steps are skipped (the compile check
+      # still runs) so the PR check is not red purely because the secret is not wired yet.
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install CDK CLI
+        # Pinned to the same minor as Amazon.CDK.Lib in the csproj so a floating CLI
+        # release cannot surprise the pipeline with a lib/CLI version skew.
+        run: npm install -g aws-cdk@2.140.0
+
+      - name: Build (compile check)
+        run: dotnet build -c Release
+
+      - name: Note missing deploy role
+        if: env.AWS_DEPLOY_ROLE_ARN == ''
+        run: echo "::warning::AWS_DEPLOY_ROLE_ARN secret is not configured; skipping the AWS steps (cdk diff/deploy). The compile check above still ran. Set the repo secret to enable diff/deploy."
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-southeast-2
+
+      - name: CDK Diff (pull requests)
+        if: github.event_name == 'pull_request' && env.AWS_DEPLOY_ROLE_ARN != ''
+        run: cdk diff
+
+      - name: CDK Diff (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'diff' && env.AWS_DEPLOY_ROLE_ARN != ''
+        run: cdk diff
+
+      - name: CDK Deploy (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy' && env.AWS_DEPLOY_ROLE_ARN != ''
+        run: cdk deploy NetbirdControlPlaneStack NetbirdRoutingPeerStack --require-approval never
