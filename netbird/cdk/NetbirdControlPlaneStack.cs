@@ -12,8 +12,10 @@ namespace Netbird.Cdk;
 
 /// <summary>
 /// Netbird self-hosted control plane (management, signal, relay, dashboard, Coturn) on a
-/// single EC2 instance with a static Elastic IP. Internet-facing VPN edge in its own
-/// dedicated VPC, isolated from shared services. SSM-only access (no inbound SSH).
+/// single EC2 instance with a static Elastic IP. Internet-facing VPN edge that runs in the
+/// shared-services VPC public-subnet tier (alongside the Pritunl VPN it replaces and the
+/// shared RDS) so it inherits the vetted peering/RDS-allowlist fabric and VPC flow logs.
+/// SSM-only access (no inbound SSH).
 /// DNS (netbird.autoguru.com.au) lives in Cloudflare, so this stack only outputs the EIP.
 /// </summary>
 public class NetbirdControlPlaneStack : Stack

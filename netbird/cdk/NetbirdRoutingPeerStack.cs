@@ -14,7 +14,9 @@ namespace Netbird.Cdk;
 /// Netbird routing peer: runs the Netbird agent + WireGuard data plane on a single EC2
 /// instance and carries the static Elastic IP that is added once to the Cloudflare origin
 /// allowlist (it survives EC2 Auto Recovery). Stateless: re-enrols from the setup key on
-/// rebuild. Own dedicated VPC, SSM-only access (no inbound SSH).
+/// rebuild. Runs in the shared-services VPC public-subnet tier (same VPC as the control
+/// plane and Pritunl), so the shared RDS can admit it by security-group reference.
+/// SSM-only access (no inbound SSH).
 /// </summary>
 public class NetbirdRoutingPeerStack : Stack
 {

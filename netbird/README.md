@@ -16,10 +16,15 @@ Everything runs in the **autoguru-shared** account (`791686214595`), `ap-southea
 ## Stacks
 
 AWS CDK in **C#** (matching the rest of AutoGuru's CDK infrastructure), under `netbird/cdk`.
-Two independent stacks (no "God" stack), each: dedicated VPC (public subnet + EIP, no NAT),
-Amazon Linux 2023, Docker, IMDSv2 required, encrypted EBS, CloudWatch auto-recovery, an SSM-only
-IAM role (no inbound SSH), and secrets read at boot from Secrets Manager. The EC2 user-data lives
-in `netbird/scripts/*.sh` and is embedded into the assembly at build time.
+Two independent stacks (no "God" stack). Both run in the existing shared-services VPC
+(`vpc-064a7525a3bcc4667`) public-subnet tier — alongside the Pritunl VPN they replace and the
+shared RDS — each with a static EIP (no NAT). Reusing the shared VPC (rather than a dedicated one)
+is deliberate: the peers inherit the vetted peering + RDS-allowlist fabric and the VPC's flow logs,
+and the shared SQL Server RDS can admit them by security-group reference (how developers reach RDS
+over the VPN). Each is otherwise self-contained: Amazon Linux 2023, Docker, IMDSv2 required,
+encrypted EBS, CloudWatch auto-recovery, an SSM-only IAM role (no inbound SSH), and secrets read at
+boot from Secrets Manager. The EC2 user-data lives in `netbird/scripts/*.sh` and is embedded into
+the assembly at build time.
 
 | Stack | Instance | Purpose |
 | --- | --- | --- |
