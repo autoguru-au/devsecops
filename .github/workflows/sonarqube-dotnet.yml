@@ -7,6 +7,13 @@ on:
         required: false
         type: boolean
         default: true
+      # Fallback only. The SDK version normally comes from the repo's global.json (see
+      # the "Detect global.json" step); this is used solely when no SDK-pinning
+      # global.json is found on the walk from the solution dir up to the repo root.
+      dotnet_version:
+        required: false
+        type: string
+        default: 10.0.x
     secrets:
       SONAR_HOST_URL:
         required: true
@@ -33,27 +40,50 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Locate the caller repo's SDK-pinning global.json so the .NET version tracks the
-      # repo rather than being hard-coded here (which would need bumping every upgrade).
-      # A repo may keep more than one global.json — e.g. a root copy carrying only a
-      # `test` runner block and the real SDK pin under src/ — so match on the `sdk` key
-      # rather than the first file found.
+      # Resolve the SDK version the way the .NET SDK itself does: start from the
+      # directory of the solution under analysis and walk up to the repo root, taking
+      # the first global.json that actually pins an SDK. This lets the .NET version
+      # track the repo's global.json rather than being hard-coded here (which would
+      # need bumping every upgrade). We match on the `sdk` key because a repo may keep
+      # a second global.json (e.g. a root copy carrying only a `test` runner block) that
+      # must not be mistaken for the pin. If nothing is found we fall back to the
+      # dotnet_version input below.
       - name: Detect global.json
         id: detect_globaljson
         run: |
-          GLOBAL_JSON=$(find . -name 'global.json' -not -path '*/node_modules/*' -exec grep -l '"sdk"' {} \; | head -n 1)
-          if [ -z "$GLOBAL_JSON" ]; then
-            echo "❌ No global.json with an \"sdk\" block found. Add one that pins the SDK version."
-            exit 1
+          SLNX=$(find . -name '*.slnx' | head -n 1)
+          DIR=$(dirname "${SLNX:-.}")
+          GLOBAL_JSON=""
+          while true; do
+            if [ -f "$DIR/global.json" ] && grep -q '"sdk"' "$DIR/global.json"; then
+              GLOBAL_JSON="$DIR/global.json"
+              break
+            fi
+            if [ "$DIR" = "." ] || [ "$DIR" = "/" ]; then
+              break
+            fi
+            DIR=$(dirname "$DIR")
+          done
+          if [ -n "$GLOBAL_JSON" ]; then
+            echo "Using SDK pin from $GLOBAL_JSON"
+          else
+            echo "No SDK-pinning global.json found; falling back to dotnet-version ${{ inputs.dotnet_version }}"
           fi
-          echo "Using SDK pin from $GLOBAL_JSON"
           echo "GLOBAL_JSON=$GLOBAL_JSON" >> $GITHUB_OUTPUT
 
-      # Setup .NET (version comes from the detected global.json)
-      - name: Setup .NET
+      # Setup .NET from the detected global.json when one was found...
+      - name: Setup .NET (from global.json)
+        if: steps.detect_globaljson.outputs.GLOBAL_JSON != ''
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: ${{ steps.detect_globaljson.outputs.GLOBAL_JSON }}
+
+      # ...otherwise fall back to the dotnet_version input.
+      - name: Setup .NET (fallback version)
+        if: steps.detect_globaljson.outputs.GLOBAL_JSON == ''
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
 
       # Install SonarScanner
       - name: Install Sonar Scanner
