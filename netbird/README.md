@@ -37,8 +37,9 @@ the assembly at build time.
    client `5853144b-3c6f-4e39-a5b0-df1c3efcdcb1`, tenant `4542d3b9-a2ab-47a6-bc7a-1c25894c1adf`.
    Its client secret must be in Secrets Manager (`ap-southeast-2`) at
    `/netbird/control-plane/entra-client-secret`.
-2. The routing-peer setup key secret `/netbird/routing-peer/setup-key` is created (empty) by
-   the routing-peer stack and populated after the control plane is set up.
+2. The routing-peer setup key secret `/netbird/routing-peer/setup-key` is created by the
+   routing-peer stack with a generated placeholder value and overwritten with a real setup key
+   after the control plane is set up (a reboot re-enrols the peer with the new key).
 
 ## Deploy
 
@@ -49,7 +50,7 @@ pull requests touching `netbird/**` get a `cdk diff`; deploys are a manual `work
 Prerequisite: the shared account is already CDK-bootstrapped (the existing `SharedPlatformStack`
 is deployed there via CDK), so no `cdk bootstrap` is needed.
 
-Local (requires the .NET 9 SDK and the CDK CLI, with shared-account credentials):
+Local (requires the .NET 10 SDK and the CDK CLI, with shared-account credentials):
 
 ```bash
 cd netbird/cdk

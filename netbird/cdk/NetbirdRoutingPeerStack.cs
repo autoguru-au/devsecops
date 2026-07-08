@@ -23,8 +23,10 @@ public class NetbirdRoutingPeerStack : Stack
     public NetbirdRoutingPeerStack(Construct scope, string id, IStackProps props)
         : base(scope, id, props)
     {
-        // Netbird setup key in Secrets Manager - created empty here, populated out of band after
-        // the control plane is set up, so the key can be rotated without an instance rebuild.
+        // Netbird setup key in Secrets Manager - created here with a generated placeholder value
+        // (Secrets Manager cannot create an empty secret) and overwritten out of band once the
+        // control plane is up. Rotation = store the new key, then reboot the instance so the
+        // user-data re-enrols with it; no instance rebuild is needed.
         var setupKeySecret = new Secret(this, "NetbirdSetupKey", new SecretProps
         {
             SecretName = "/netbird/routing-peer/setup-key",
