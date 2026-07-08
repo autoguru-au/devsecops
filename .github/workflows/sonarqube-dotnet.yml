@@ -33,13 +33,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Setup .NET (supports multiple versions)
+      # Locate the caller repo's SDK-pinning global.json so the .NET version tracks the
+      # repo rather than being hard-coded here (which would need bumping every upgrade).
+      # A repo may keep more than one global.json — e.g. a root copy carrying only a
+      # `test` runner block and the real SDK pin under src/ — so match on the `sdk` key
+      # rather than the first file found.
+      - name: Detect global.json
+        id: detect_globaljson
+        run: |
+          GLOBAL_JSON=$(find . -name 'global.json' -not -path '*/node_modules/*' -exec grep -l '"sdk"' {} \; | head -n 1)
+          if [ -z "$GLOBAL_JSON" ]; then
+            echo "❌ No global.json with an \"sdk\" block found. Add one that pins the SDK version."
+            exit 1
+          fi
+          echo "Using SDK pin from $GLOBAL_JSON"
+          echo "GLOBAL_JSON=$GLOBAL_JSON" >> $GITHUB_OUTPUT
+
+      # Setup .NET (version comes from the detected global.json)
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            10.0.x
-            9.0.x
+          global-json-file: ${{ steps.detect_globaljson.outputs.GLOBAL_JSON }}
 
       # Install SonarScanner
       - name: Install Sonar Scanner
