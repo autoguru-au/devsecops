@@ -28,12 +28,28 @@ mkdir -p /opt/netbird
 cat > /opt/netbird/setup.env << EOF
 NETBIRD_DOMAIN=netbird.autoguru.com.au
 NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT=https://login.microsoftonline.com/4542d3b9-a2ab-47a6-bc7a-1c25894c1adf/v2.0/.well-known/openid-configuration
+NETBIRD_USE_AUTH0=false
 NETBIRD_AUTH_CLIENT_ID=5853144b-3c6f-4e39-a5b0-df1c3efcdcb1
 NETBIRD_AUTH_CLIENT_SECRET=${ENTRA_SECRET}
 NETBIRD_AUTH_AUDIENCE=5853144b-3c6f-4e39-a5b0-df1c3efcdcb1
-NETBIRD_AUTH_SUPPORTED_CLAIMS=email
-NETBIRD_AUTH_SUPPORTED_SCOPES="openid profile email"
-NETBIRD_AUTH_USER_ID_CLAIM=sub
+NETBIRD_AUTH_SUPPORTED_SCOPES="openid profile email offline_access"
+NETBIRD_AUTH_USER_ID_CLAIM=oid
+# Entra issues an access token scoped to MS Graph for OIDC-only scopes, so its aud never matches
+# our app; validate the ID token instead (its aud is always the client id). This is Netbird's own
+# documented Entra fix (setup.env.example ships it commented). Also disable the Auth0-style audience
+# param, which Entra does not support.
+NETBIRD_TOKEN_SOURCE=idToken
+NETBIRD_AUTH_PKCE_USE_ID_TOKEN=true
+NETBIRD_DASH_AUTH_USE_AUDIENCE=false
+# Pin all control-plane images to the versions coherent with netbird v0.74.2 (COM-147). The dashboard
+# is versioned separately (v2.x); v2.39.0 is the last standalone release before the v2.80 cloud-edition
+# merge, whose builds stopped substituting NETBIRD_MGMT_API_ENDPOINT into the served assets and broke
+# self-hosted login. :latest for these would reintroduce that drift.
+NETBIRD_MANAGEMENT_TAG=0.74.2
+NETBIRD_SIGNAL_TAG=0.74.2
+NETBIRD_RELAY_TAG=0.74.2
+NETBIRD_DASHBOARD_TAG=v2.39.0
+COTURN_TAG=4.14.0
 # Let's Encrypt ACME account email (cert auto-renews; this only receives expiry notices).
 # TODO (pre-cutover, COM-147): move to a monitored team distribution list instead of an individual.
 NETBIRD_LETSENCRYPT_EMAIL=guillermo@autoguru.com.au
