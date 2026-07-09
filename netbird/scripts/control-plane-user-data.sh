@@ -41,6 +41,11 @@ NETBIRD_AUTH_USER_ID_CLAIM=oid
 NETBIRD_TOKEN_SOURCE=idToken
 NETBIRD_AUTH_PKCE_USE_ID_TOKEN=true
 NETBIRD_DASH_AUTH_USE_AUDIENCE=false
+# The dashboard defaults its OIDC callback to fragment URIs (/#callback, /#silent-callback), which
+# Entra/Azure AD rejects (RFC 6749 forbids a fragment in redirect_uri). Override with path-based URIs;
+# these MUST be registered as SPA redirect URIs on the Entra app (https://<domain>/peers and /add-peers).
+NETBIRD_AUTH_REDIRECT_URI="/peers"
+NETBIRD_AUTH_SILENT_REDIRECT_URI="/add-peers"
 # Pin all control-plane images to the versions coherent with netbird v0.74.2 (COM-147). The dashboard
 # is versioned separately (v2.x); v2.39.0 is the last standalone release before the v2.80 cloud-edition
 # merge, whose builds stopped substituting NETBIRD_MGMT_API_ENDPOINT into the served assets and broke
