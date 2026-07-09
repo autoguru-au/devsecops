@@ -27,7 +27,7 @@ on:
 
 jobs:
   sonarqube:
-    uses: autoguru-au/devsecops/.github/workflows/sonarqube-typescript.yml@main
+    uses: autoguru-au/devsecops/.github/workflows/sonarqube-typescript.yml@v1.0.0
     with:
       enable_tests: true
     secrets: inherit
@@ -56,7 +56,7 @@ on:
 
 jobs:
   sonarqube:
-    uses: autoguru-au/devsecops/.github/workflows/sonarqube-dotnet.yml@main
+    uses: autoguru-au/devsecops/.github/workflows/sonarqube-dotnet.yml@v1.0.0
     with:
       enable_tests: true
     secrets: inherit
@@ -101,10 +101,47 @@ on:
 
 jobs:
   gitleaks:
-    uses: autoguru-au/devsecops/.github/workflows/gitleaks.yml@main
+    uses: autoguru-au/devsecops/.github/workflows/gitleaks.yml@v1.0.0
     with:
       fail_on_finding: false
 ```
+
+---
+
+## 🏷️ Versioning
+
+These reusable workflows are versioned with semantic version tags (`vMAJOR.MINOR.PATCH`). Callers are expected to pin to a tag rather than to a branch such as `@main`, so that upstream changes never alter caller behaviour without a deliberate opt-in.
+
+### Version bump rules
+
+| Bump | When to use |
+|---|---|
+| **MAJOR** | Breaking change to a workflow's public contract: an input is renamed or removed, default behaviour changes in a way that could red-line existing callers, permissions requirements grow, or the invocation pattern itself changes. |
+| **MINOR** | Backwards-compatible addition: a new optional input, a new job step that improves output without breaking existing consumers, a version bump of a pinned tool that keeps the same interface. |
+| **PATCH** | Bug fix or documentation-only change with no behavioural difference for callers. |
+
+### Cutting a new tag
+
+After a change lands on `main`:
+
+```bash
+git tag -a vX.Y.Z -m "Short summary of the release"
+git push origin vX.Y.Z
+```
+
+For visibility, also create a GitHub Release from the tag with a brief changelog.
+
+### Pinning strategy for callers
+
+- **Recommended default**: pin to the exact tag `@vX.Y.Z`. Fully immutable, no surprises. Renovate (or Dependabot) will open a PR to bump when a new tag is released, so the review lives on the caller side rather than happening silently upstream.
+- Acceptable alternatives if a team wants faster propagation of patches:
+  - `@vX.Y` to accept PATCH bumps automatically.
+  - `@vX` to accept MINOR and PATCH bumps automatically.
+- **Not recommended**: pin to a branch (`@main`, `@develop`). It removes the caller's review gate against unintended upstream changes.
+
+### Deprecation window
+
+MAJOR bumps require at least one MINOR release preceding them where the old behaviour is marked deprecated (comment in workflow + note in release changelog). Callers get one clean release cycle to migrate.
 
 ---
 
