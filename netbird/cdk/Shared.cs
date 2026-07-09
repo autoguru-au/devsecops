@@ -22,6 +22,16 @@ internal static class Shared
     /// </summary>
     public const string SlackNotifierTopicArnExport = "anz-shared-SlackNotifierTopicArn";
 
+    /// <summary>
+    /// Delegated public hosted zone for netbird.autoguru.com.au, created by a shared-account
+    /// admin and delegated from the parent autoguru.com.au zone. This app manages the records
+    /// inside it (the control-plane A record) but not the zone itself.
+    /// </summary>
+    public const string HostedZoneId = "Z0616831377EB4AQXS3S1";
+
+    /// <summary>Zone name of <see cref="HostedZoneId"/>.</summary>
+    public const string HostedZoneName = "netbird.autoguru.com.au";
+
     /// <summary>Imports the shared Slack-notifier SNS topic so alarms notify the same channel as the rest of the platform.</summary>
     public static ITopic SlackNotifierTopic(Stack stack)
         => Topic.FromTopicArn(stack, "SlackNotifierTopic", Fn.ImportValue(SlackNotifierTopicArnExport));
