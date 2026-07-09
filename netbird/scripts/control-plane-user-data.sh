@@ -5,12 +5,13 @@ set -euo pipefail
 dnf install -y docker git
 systemctl enable --now docker
 
-# Install Docker Compose plugin
-# TODO (before production cutover): pin to a fixed, checksum-verified Compose release instead
-# of :latest so instance builds are reproducible and supply-chain integrity is verified.
+# Install Docker Compose plugin (pinned + checksum-verified; COM-147)
+COMPOSE_VERSION="v5.3.1"
+COMPOSE_SHA256="f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959"
 mkdir -p /usr/local/lib/docker/cli-plugins
-curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
   -o /usr/local/lib/docker/cli-plugins/docker-compose
+echo "${COMPOSE_SHA256}  /usr/local/lib/docker/cli-plugins/docker-compose" | sha256sum -c
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Fetch Entra client secret from Secrets Manager
@@ -38,9 +39,8 @@ chmod 0600 /opt/netbird/setup.env
 # Netbird setup is run MANUALLY via SSM once the DNS A record (netbird.autoguru.com.au -> this EIP)
 # has propagated. We use the EXTERNAL Entra OIDC flow, NOT the bundled ZITADEL script.
 # Our Entra-populated env is at /opt/netbird/setup.env. Run via SSM Session Manager:
-#   REPO="https://github.com/netbirdio/netbird/"
-#   LATEST_TAG=$(basename $(curl -fs -o/dev/null -w %{redirect_url} ${REPO}releases/latest))
-#   git clone --depth 1 --branch "$LATEST_TAG" "$REPO" /opt/netbird/src
+#   NETBIRD_VERSION="v0.74.2"   # keep in lockstep with the routing-peer image (COM-147)
+#   git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
 #   cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
 #   cd /opt/netbird/src/infrastructure_files && ./configure.sh   # -> artifacts/{docker-compose.yml,management.json,turnserver.conf}
 #   cd artifacts && docker compose up -d

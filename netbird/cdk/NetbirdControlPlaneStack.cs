@@ -3,6 +3,7 @@ using Amazon.CDK.AWS.CloudWatch;
 using Amazon.CDK.AWS.CloudWatch.Actions;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.IAM;
+using Amazon.CDK.AWS.KMS;
 using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.SecretsManager;
 using Constructs;
@@ -70,6 +71,47 @@ public class NetbirdControlPlaneStack : Stack
         sg.AddIngressRule(Peer.AnyIpv4(), Port.Tcp(3478), "TURN/STUN -- Coturn NAT traversal (TCP)");
         sg.AddIngressRule(Peer.AnyIpv4(), Port.UdpRange(49152, 65535), "TURN relay media ports");
 
+        // Customer-managed key for the root EBS volume. The AWS-managed aws/ebs key cannot be
+        // shared cross-account, so a managed-key volume fails the daily AWS Backup copy into the
+        // ag-vault DR account (154989417267) - see COM-66. This CMK mirrors the platform's proven
+        // RDS-backup key policy (autoguru KmsResourceFactory.CreateRdsKeyForBackups): the shared
+        // AWS Backup role can grant/decrypt, and the ag-vault account can decrypt + re-wrap the
+        // copied snapshot, scoped to EBS via kms:ViaService.
+        var ebsKey = new Key(this, "ControlPlaneEbsKey", new KeyProps
+        {
+            Alias = "netbird-control-plane-ebs-key",
+            Description = "Encrypts the Netbird control-plane EBS volume; permits AWS Backup cross-account copy to ag-vault (COM-66).",
+            EnableKeyRotation = true,
+            RemovalPolicy = RemovalPolicy.RETAIN,
+        });
+        ebsKey.AddToResourcePolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "AllowAwsBackup",
+            Effect = Effect.ALLOW,
+            Principals = [new ArnPrincipal("arn:aws:iam::791686214595:role/AWSBackup")],
+            Actions = ["kms:Decrypt", "kms:DescribeKey", "kms:CreateGrant"],
+            Resources = ["*"],
+        }));
+        ebsKey.AddToResourcePolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "AllowAgVaultAccountDecrypt",
+            Effect = Effect.ALLOW,
+            Principals = [new AccountPrincipal("154989417267")],
+            Actions =
+            [
+                "kms:Decrypt", "kms:DescribeKey", "kms:CreateGrant",
+                "kms:GenerateDataKey", "kms:GenerateDataKeyWithoutPlaintext",
+            ],
+            Resources = ["*"],
+            Conditions = new Dictionary<string, object>
+            {
+                ["StringEquals"] = new Dictionary<string, object>
+                {
+                    ["kms:ViaService"] = "ec2.ap-southeast-2.amazonaws.com",
+                },
+            },
+        }));
+
         var instance = new Instance_(this, "ControlPlane", new InstanceProps
         {
             Vpc = vpc,
@@ -91,6 +133,7 @@ public class NetbirdControlPlaneStack : Stack
                     {
                         VolumeType = EbsDeviceVolumeType.GP3,
                         Encrypted = true,
+                        KmsKey = ebsKey,
                     }),
                 },
             ],
