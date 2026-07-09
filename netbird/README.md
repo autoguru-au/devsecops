@@ -53,7 +53,7 @@ pull requests touching `netbird/**` get a `cdk diff`; deploys are a manual `work
 Prerequisite: the shared account is already CDK-bootstrapped (the existing `SharedPlatformStack`
 is deployed there via CDK), so no `cdk bootstrap` is needed.
 
-Local (requires the .NET 9 SDK and the CDK CLI, with shared-account credentials):
+Local (requires the .NET 10 SDK and the CDK CLI, with shared-account credentials):
 
 ```bash
 cd netbird/cdk
