@@ -32,7 +32,11 @@ NETBIRD_AUTH_CLIENT_ID=5853144b-3c6f-4e39-a5b0-df1c3efcdcb1
 NETBIRD_AUTH_CLIENT_SECRET=${ENTRA_SECRET}
 NETBIRD_AUTH_AUDIENCE=5853144b-3c6f-4e39-a5b0-df1c3efcdcb1
 NETBIRD_AUTH_SUPPORTED_CLAIMS=email
+NETBIRD_AUTH_SUPPORTED_SCOPES="openid profile email"
 NETBIRD_AUTH_USER_ID_CLAIM=sub
+# Let's Encrypt ACME account email (cert auto-renews; this only receives expiry notices).
+# TODO (pre-cutover, COM-147): move to a monitored team distribution list instead of an individual.
+NETBIRD_LETSENCRYPT_EMAIL=guillermo@autoguru.com.au
 EOF
 chmod 0600 /opt/netbird/setup.env
 
