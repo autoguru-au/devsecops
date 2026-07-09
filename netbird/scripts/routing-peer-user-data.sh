@@ -24,7 +24,7 @@ SETUP_KEY=$(aws secretsmanager get-secret-value \
 mkdir -p /opt/netbird
 cat > /opt/netbird/.env << EOF
 NB_SETUP_KEY=${SETUP_KEY}
-NB_MANAGEMENT_URL=https://netbird.autoguru.com.au
+NB_MANAGEMENT_URL=https://netbird.autoguru.com.au:33073
 EOF
 chmod 0600 /opt/netbird/.env
 
