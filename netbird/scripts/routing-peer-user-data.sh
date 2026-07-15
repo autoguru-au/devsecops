@@ -29,12 +29,12 @@ EOF
 chmod 0600 /opt/netbird/.env
 
 # Routing peer runs the Netbird agent in host networking with NET_ADMIN to manage routes.
-# Image pinned by tag + digest (COM-147). MUST match the control-plane management line (0.72.x) so the
+# Image pinned by tag + digest (COM-147). MUST match the control-plane management line (0.74.x) so the
 # agent and management stay compatible; keep this in lockstep with NETBIRD_MANAGEMENT_TAG.
 cat > /opt/netbird/docker-compose.yml << 'COMPOSE'
 services:
   netbird:
-    image: netbirdio/netbird:0.72.4@sha256:6c6c20baffae4a3ec50f29ec9361608a420625185505e8cd6f0c44d71c5d4798
+    image: netbirdio/netbird:0.74.6@sha256:55a93ee3d2cad5d1a025a08316243fc758c938e150073dd39c747baec8778153
     container_name: netbird-routing-peer
     restart: unless-stopped
     network_mode: host

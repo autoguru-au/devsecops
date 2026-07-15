@@ -71,7 +71,7 @@ control-plane EIP. After deploy, wait for it to resolve (Let's Encrypt needs the
 1. **Install Netbird on the control plane** (SSM into the instance). The user-data has already written
    `/opt/netbird/setup.env` with the Entra OIDC settings and the image version pins. Run:
    ```bash
-   NETBIRD_VERSION=v0.72.4   # MUST match the *_TAG pins in setup.env (dashboard v2.39.0 pairs with 0.72.x)
+   NETBIRD_VERSION=v0.74.6   # MUST match the *_TAG pins in setup.env (dashboard v2.90.x pairs with 0.74.x)
    git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
    cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
    cd /opt/netbird/src/infrastructure_files && bash ./configure.sh
@@ -80,7 +80,7 @@ control-plane EIP. After deploy, wait for it to resolve (Let's Encrypt needs the
    All five containers (dashboard, management, signal, relay, coturn) come up and the dashboard gets a
    Let's Encrypt cert automatically. Verify with `curl https://netbird.autoguru.com.au` (expect 200).
    **Version coherence is mandatory**: management/signal/relay and the dashboard are a matched set
-   (0.72.x ships dashboard v2.39.0). Mixing release lines breaks login.
+   (0.74.x pairs with dashboard v2.90.x; use v2.90.4+). Mixing release lines breaks login.
 2. **Dashboard login**: browse to https://netbird.autoguru.com.au and sign in with Entra SSO. The first
    login bootstraps the org and makes you admin. (Uses the external Entra OIDC flow, not the bundled
    ZITADEL script; the dashboard is a public PKCE client with no secret, callbacks on `/auth`+`/silent-auth`.)
