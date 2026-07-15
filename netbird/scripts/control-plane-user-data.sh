@@ -44,14 +44,15 @@ NETBIRD_DASH_AUTH_USE_AUDIENCE=false
 NETBIRD_AUTH_REDIRECT_URI="/auth"
 NETBIRD_AUTH_SILENT_REDIRECT_URI="/silent-auth"
 # Pin the whole control-plane stack to a MATCHED netbird release line (COM-147). Management and the
-# dashboard are versioned separately and MUST be paired: netbird 0.72.x ships dashboard v2.39.0. Mixing
-# lines breaks login (dashboard v2.90.x stops substituting NETBIRD_MGMT_API_ENDPOINT; the 0.74.x
-# management /api/instance schema is not understood by v2.39.0 and the dashboard hangs). Keep
-# management/signal/relay and the cloned NETBIRD_VERSION below in lockstep on the same line.
-NETBIRD_MANAGEMENT_TAG=0.72.4
-NETBIRD_SIGNAL_TAG=0.72.4
-NETBIRD_RELAY_TAG=0.72.4
-NETBIRD_DASHBOARD_TAG=v2.39.0
+# dashboard are versioned separately and MUST be paired: netbird 0.74.x pairs with dashboard v2.90.x.
+# Mixing release lines breaks login (the older dashboard v2.39.0 does not understand the 0.74.x
+# /api/instance schema and hangs; very early v2.90.x builds also had a broken env substitution for
+# NETBIRD_MGMT_API_ENDPOINT, fixed by v2.90.4). Keep management/signal/relay and the cloned
+# NETBIRD_VERSION below in lockstep on the same line.
+NETBIRD_MANAGEMENT_TAG=0.74.6
+NETBIRD_SIGNAL_TAG=0.74.6
+NETBIRD_RELAY_TAG=0.74.6
+NETBIRD_DASHBOARD_TAG=v2.90.4
 COTURN_TAG=4.14.0
 # Let's Encrypt ACME account email (cert auto-renews; this only receives expiry notices).
 # TODO (pre-cutover, COM-147): move to a monitored team distribution list instead of an individual.
@@ -62,11 +63,18 @@ chmod 0600 /opt/netbird/setup.env
 # Netbird setup is run MANUALLY via SSM once the DNS A record (netbird.autoguru.com.au -> this EIP)
 # has propagated. We use the EXTERNAL Entra OIDC flow, NOT the bundled ZITADEL script.
 # Our Entra-populated env is at /opt/netbird/setup.env. Run via SSM Session Manager:
-#   NETBIRD_VERSION="v0.72.4"   # MUST match the *_TAG image pins above (dashboard v2.39.0 pairs with 0.72.x)
+#   NETBIRD_VERSION="v0.74.6"   # MUST match the *_TAG image pins above (dashboard v2.90.x pairs with 0.74.x)
 #   git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
 #   cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
 #   cd /opt/netbird/src/infrastructure_files && ./configure.sh   # -> artifacts/{docker-compose.yml,management.json,turnserver.conf}
 #   cd artifacts && docker compose up -d
+# NOTE (COM-147, datastore encryption key): configure.sh writes a DataStoreEncryptionKey into
+# management.json that encrypts user PII (email/name) at rest. It MUST be a STABLE value across
+# re-provisioning. A random key that only lives in the running container is lost on the next
+# container recreate and then breaks peer sync ("decrypt user: decrypt email: message authentication
+# failed"). configure.sh preserves the key of an existing management.json; for production, source a
+# fixed key from Secrets Manager at boot and write it into management.json (recording it in setup.env
+# as NETBIRD_DATASTORE_ENCRYPTION_KEY) so every rebuild reuses the same key.
 # Peers and the routing peer enroll with a pre-shared setup key (created in the dashboard, stored in
 # Secrets Manager); the dashboard admin login uses Entra SSO via the SPA app registration.
 echo "Control plane ready. Run Netbird setup via SSM after DNS propagation (Entra flow: configure.sh, not zitadel)." >> /var/log/netbird-setup.log
