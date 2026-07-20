@@ -27,7 +27,7 @@ on:
 
 jobs:
   sonarqube:
-    uses: autoguru-au/devsecops/.github/workflows/sonarqube-typescript.yml@v1.0.0
+    uses: autoguru-au/devsecops/.github/workflows/sonarqube-typescript.yml@main
     with:
       enable_tests: true
     secrets: inherit
@@ -56,7 +56,7 @@ on:
 
 jobs:
   sonarqube:
-    uses: autoguru-au/devsecops/.github/workflows/sonarqube-dotnet.yml@v1.0.0
+    uses: autoguru-au/devsecops/.github/workflows/sonarqube-dotnet.yml@main
     with:
       enable_tests: true
     secrets: inherit
@@ -101,7 +101,7 @@ on:
 
 jobs:
   gitleaks:
-    uses: autoguru-au/devsecops/.github/workflows/gitleaks.yml@v1.0.0
+    uses: autoguru-au/devsecops/.github/workflows/gitleaks.yml@main
     with:
       fail_on_finding: false
 ```
@@ -133,7 +133,7 @@ For visibility, also create a GitHub Release from the tag with a brief changelog
 
 ### Pinning strategy for callers
 
-- **Recommended default**: pin to the exact tag `@vX.Y.Z`. Fully immutable, no surprises. Renovate (or Dependabot) will open a PR to bump when a new tag is released, so the review lives on the caller side rather than happening silently upstream.
+- **Recommended default**: pin to the exact tag `@vX.Y.Z`. Fully immutable, no surprises. If the caller repository has Renovate or Dependabot configured to track workflow tags, a bump PR is opened automatically when a new tag is released, so the review lives on the caller side rather than happening silently upstream. Without that configuration, exact-tag pinning strands the caller on the pinned version until a manual bump, so teams should either enable one of those bots or set a periodic reminder to bump.
 - Acceptable alternatives if a team wants faster propagation of patches:
   - `@vX.Y` to accept PATCH bumps automatically.
   - `@vX` to accept MINOR and PATCH bumps automatically.
