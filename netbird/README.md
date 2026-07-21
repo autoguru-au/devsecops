@@ -69,7 +69,7 @@ control-plane EIP. After deploy, wait for it to resolve (Let's Encrypt needs the
 1. **Install Netbird on the control plane** (SSM into the instance). The user-data has already written
    `/opt/netbird/setup.env` with the Entra OIDC settings and the image version pins. Run:
    ```bash
-   NETBIRD_VERSION=v0.74.6   # MUST match the *_TAG pins in setup.env (dashboard v2.90.x pairs with 0.74.x)
+   NETBIRD_VERSION=v0.74.7   # MUST match the *_TAG pins in setup.env (dashboard v2.90.x pairs with 0.74.x)
    git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
    cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
    cd /opt/netbird/src/infrastructure_files && bash ./configure.sh

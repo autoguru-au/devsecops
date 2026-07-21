@@ -49,10 +49,10 @@ NETBIRD_AUTH_SILENT_REDIRECT_URI="/silent-auth"
 # /api/instance schema and hangs; very early v2.90.x builds also had a broken env substitution for
 # NETBIRD_MGMT_API_ENDPOINT, fixed by v2.90.4). Keep management/signal/relay and the cloned
 # NETBIRD_VERSION below in lockstep on the same line.
-NETBIRD_MANAGEMENT_TAG=0.74.6
-NETBIRD_SIGNAL_TAG=0.74.6
-NETBIRD_RELAY_TAG=0.74.6
-NETBIRD_DASHBOARD_TAG=v2.90.4
+NETBIRD_MANAGEMENT_TAG=0.74.7
+NETBIRD_SIGNAL_TAG=0.74.7
+NETBIRD_RELAY_TAG=0.74.7
+NETBIRD_DASHBOARD_TAG=v2.90.5
 COTURN_TAG=4.14.0
 # Let's Encrypt ACME account email (cert auto-renews; this only receives expiry notices).
 # TODO (pre-cutover, COM-147): move to a monitored team distribution list instead of an individual.
@@ -63,7 +63,7 @@ chmod 0600 /opt/netbird/setup.env
 # Netbird setup is run MANUALLY via SSM once the DNS A record (netbird.autoguru.com.au -> this EIP)
 # has propagated. We use the EXTERNAL Entra OIDC flow, NOT the bundled ZITADEL script.
 # Our Entra-populated env is at /opt/netbird/setup.env. Run via SSM Session Manager:
-#   NETBIRD_VERSION="v0.74.6"   # MUST match the *_TAG image pins above (dashboard v2.90.x pairs with 0.74.x)
+#   NETBIRD_VERSION="v0.74.7"   # MUST match the *_TAG image pins above (dashboard v2.90.x pairs with 0.74.x)
 #   git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
 #   cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
 #   cd /opt/netbird/src/infrastructure_files && ./configure.sh   # -> artifacts/{docker-compose.yml,management.json,turnserver.conf}
