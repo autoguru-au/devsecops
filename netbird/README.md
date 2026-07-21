@@ -60,9 +60,9 @@ npx cdk deploy NetbirdControlPlaneStack NetbirdRoutingPeerStack --require-approv
 
 ## Post-deploy setup (manual, once)
 
-1. From the `NetbirdControlPlaneStack` outputs, take the control-plane EIP and ask an admin to
-   create the Cloudflare DNS A record `netbird.autoguru.com.au` (DNS-only, not proxied) pointing
-   at it, then wait for propagation (Let's Encrypt needs the FQDN resolvable).
+1. DNS: `netbird.autoguru.com.au` is a delegated public hosted zone in the shared account; the
+   `NetbirdControlPlaneStack` manages the apex A record pointing at the control-plane EIP. After
+   deploy, wait for propagation (Let's Encrypt needs the FQDN resolvable).
 2. SSM into the control plane and run the Netbird setup (clone, `configure.sh`, `docker compose up`)
    following the commented steps in [`scripts/control-plane-user-data.sh`](scripts/control-plane-user-data.sh).
    This uses the external Entra OIDC flow, not the bundled ZITADEL script.

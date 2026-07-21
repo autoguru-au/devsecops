@@ -3,6 +3,7 @@ using Amazon.CDK.AWS.CloudWatch;
 using Amazon.CDK.AWS.CloudWatch.Actions;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.IAM;
+using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.SecretsManager;
 using Constructs;
 using InstanceProps = Amazon.CDK.AWS.EC2.InstanceProps;
@@ -16,7 +17,8 @@ namespace Netbird.Cdk;
 /// shared-services VPC public-subnet tier (alongside the Pritunl VPN it replaces and the
 /// shared RDS) so it inherits the vetted peering/RDS-allowlist fabric and VPC flow logs.
 /// SSM-only access (no inbound SSH).
-/// DNS (netbird.autoguru.com.au) lives in Cloudflare, so this stack only outputs the EIP.
+/// DNS: netbird.autoguru.com.au is a delegated public hosted zone in this account, so the
+/// stack manages the apex A record (zone apex -> the control-plane EIP) itself.
 /// </summary>
 public class NetbirdControlPlaneStack : Stack
 {
@@ -105,6 +107,21 @@ public class NetbirdControlPlaneStack : Stack
             InstanceId = instance.InstanceId,
         });
 
+        // Apex A record -> control-plane EIP, in the delegated netbird.autoguru.com.au hosted
+        // zone (created by a shared-account admin; referenced via Shared, not managed here).
+        // Short TTL so an EIP change (stack rebuild) propagates quickly to peers.
+        var zone = HostedZone.FromHostedZoneAttributes(this, "NetbirdZone", new HostedZoneAttributes
+        {
+            HostedZoneId = Shared.HostedZoneId,
+            ZoneName = Shared.HostedZoneName,
+        });
+        _ = new ARecord(this, "ControlPlaneDnsRecord", new ARecordProps
+        {
+            Zone = zone,
+            Target = RecordTarget.FromIpAddresses(eip.Ref),
+            Ttl = Duration.Minutes(5),
+        });
+
         // Auto Recovery: recover action preserves the EIP association and private IP.
         var statusAlarm = new Alarm(this, "ControlPlaneStatusAlarm", new AlarmProps
         {
@@ -147,7 +164,7 @@ public class NetbirdControlPlaneStack : Stack
         _ = new CfnOutput(this, "ControlPlaneIp", new CfnOutputProps
         {
             Value = eip.Ref,
-            Description = "Point netbird.autoguru.com.au DNS A record to this IP before running setup",
+            Description = "Control plane EIP (the netbird.autoguru.com.au A record points here)",
         });
         _ = new CfnOutput(this, "ControlPlaneInstanceId", new CfnOutputProps
         {
