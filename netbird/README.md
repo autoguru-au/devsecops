@@ -35,8 +35,6 @@ the assembly at build time.
 
 1. **Entra ID app registration** `Netbird` (single tenant, SPA) already exists (COM-141):
    client `5853144b-3c6f-4e39-a5b0-df1c3efcdcb1`, tenant `4542d3b9-a2ab-47a6-bc7a-1c25894c1adf`.
-   Its client secret must be in Secrets Manager (`ap-southeast-2`) at
-   `/netbird/control-plane/entra-client-secret`.
 2. The routing-peer setup key secret `/netbird/routing-peer/setup-key` is created with a placeholder
    value by the routing-peer stack and overwritten with a real setup key (from the dashboard) after
    the control plane is set up.
