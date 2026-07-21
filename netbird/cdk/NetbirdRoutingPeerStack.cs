@@ -71,6 +71,13 @@ public class NetbirdRoutingPeerStack : Stack
             SecurityGroup = sg,
             Role = instanceRole,
             RequireImdsv2 = true,
+            // Re-run the user-data on every change by replacing the instance. A plain UserData edit
+            // is an in-place update on EC2::Instance: CloudFormation reboots the box but cloud-init
+            // (per-instance, run-once) does NOT re-execute, so version pins / compose changes would
+            // silently not apply. The routing peer is stateless (it re-enrols from the setup key on
+            // rebuild), so a clean replacement is the intended model. NOT set on the control plane,
+            // which is stateful (management DB, peers, ACLs) and must only be replaced deliberately.
+            UserDataCausesReplacement = true,
             BlockDevices =
             [
                 new BlockDevice

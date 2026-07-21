@@ -35,10 +35,12 @@ the assembly at build time.
 
 1. **Entra ID app registration** `Netbird` (single tenant, SPA) already exists (COM-141):
    client `5853144b-3c6f-4e39-a5b0-df1c3efcdcb1`, tenant `4542d3b9-a2ab-47a6-bc7a-1c25894c1adf`.
-   Its client secret must be in Secrets Manager (`ap-southeast-2`) at
-   `/netbird/control-plane/entra-client-secret`.
-2. The routing-peer setup key secret `/netbird/routing-peer/setup-key` is created (empty) by
-   the routing-peer stack and populated after the control plane is set up.
+2. The routing-peer setup key secret `/netbird/routing-peer/setup-key` is created with a placeholder
+   value by the routing-peer stack and overwritten with a real setup key (from the dashboard) after
+   the control plane is set up.
+3. The Entra app is a **public PKCE SPA client** (no client secret). It must have, under the
+   **Single-page application** platform, redirect URIs `https://netbird.autoguru.com.au/auth` and
+   `https://netbird.autoguru.com.au/silent-auth`.
 
 ## Deploy
 
@@ -49,7 +51,7 @@ pull requests touching `netbird/**` get a `cdk diff`; deploys are a manual `work
 Prerequisite: the shared account is already CDK-bootstrapped (the existing `SharedPlatformStack`
 is deployed there via CDK), so no `cdk bootstrap` is needed.
 
-Local (requires the .NET 9 SDK and the CDK CLI, with shared-account credentials):
+Local (requires the .NET 10 SDK and the CDK CLI, with shared-account credentials):
 
 ```bash
 cd netbird/cdk
@@ -60,15 +62,47 @@ npx cdk deploy NetbirdControlPlaneStack NetbirdRoutingPeerStack --require-approv
 
 ## Post-deploy setup (manual, once)
 
-1. DNS: `netbird.autoguru.com.au` is a delegated public hosted zone in the shared account; the
-   `NetbirdControlPlaneStack` manages the apex A record pointing at the control-plane EIP. After
-   deploy, wait for propagation (Let's Encrypt needs the FQDN resolvable).
-2. SSM into the control plane and run the Netbird setup (clone, `configure.sh`, `docker compose up`)
-   following the commented steps in [`scripts/control-plane-user-data.sh`](scripts/control-plane-user-data.sh).
-   This uses the external Entra OIDC flow, not the bundled ZITADEL script.
-3. In the dashboard, create a setup key and store it in `/netbird/routing-peer/setup-key`, then
-   rebuild / reboot the routing peer so it enrols.
-4. Define the Domain Resource (`*.autoguru.com.au`) and ask an admin to add the routing-peer EIP
-   (from `NetbirdRoutingPeerStack` outputs) to the Cloudflare origin allowlist.
-5. Gate (COM-145): confirm one Cloudflare-protected FQDN egresses via the routing-peer EIP in the
-   Cloudflare access logs. Pritunl stays live until the gate passes.
+DNS is automatic: `netbird.autoguru.com.au` is a delegated public hosted zone in the shared account
+(created by autoguru PR #5948, COM-144) and `NetbirdControlPlaneStack` manages the apex A record ->
+control-plane EIP. After deploy, wait for it to resolve (Let's Encrypt needs the FQDN reachable).
+
+1. **Install Netbird on the control plane** (SSM into the instance). The user-data has already written
+   `/opt/netbird/setup.env` with the Entra OIDC settings and the image version pins. Run:
+   ```bash
+   NETBIRD_VERSION=v0.74.6   # MUST match the *_TAG pins in setup.env (dashboard v2.90.x pairs with 0.74.x)
+   git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
+   cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
+   cd /opt/netbird/src/infrastructure_files && bash ./configure.sh
+   cd artifacts && docker compose up -d
+   ```
+   All five containers (dashboard, management, signal, relay, coturn) come up and the dashboard gets a
+   Let's Encrypt cert automatically. Verify with `curl https://netbird.autoguru.com.au` (expect 200).
+   **Version coherence is mandatory**: management/signal/relay and the dashboard are a matched set
+   (0.74.x pairs with dashboard v2.90.x; use v2.90.4+). Mixing release lines breaks login.
+2. **Dashboard login**: browse to https://netbird.autoguru.com.au and sign in with Entra SSO. The first
+   login bootstraps the org and makes you admin. (Uses the external Entra OIDC flow, not the bundled
+   ZITADEL script; the dashboard is a public PKCE client with no secret, callbacks on `/auth`+`/silent-auth`.)
+3. **Enrol the routing peer**: in the dashboard create a reusable Setup Key, store it in Secrets Manager
+   at `/netbird/routing-peer/setup-key`, then re-run the routing-peer agent so it enrols (it reads the key
+   at boot; `NB_MANAGEMENT_URL` must include the `:33073` management port).
+4. **Route the internal apps**: in the dashboard create a Network, add a Domain Resource (a specific FQDN
+   to start, or `*.autoguru.com.au`), assign the routing peer (Masquerade ON) plus an Access Policy from
+   the client group to the resource group. Ask an admin to add the routing-peer EIP `54.253.102.22` to the
+   Cloudflare origin allowlist.
+
+## Testing the POC (for others)
+
+1. Install the Netbird desktop client. Client SSO/device-auth is disabled, so enrol with a Setup Key
+   (ask the POC owner, or create one in the dashboard):
+   ```
+   netbird up --management-url https://netbird.autoguru.com.au:33073 --setup-key <SETUP_KEY>
+   ```
+2. `netbird status --detail` should show Management/Signal **Connected** and the routed domain under
+   **Networks**.
+3. Browse to a routed Cloudflare-fronted app. To prove traffic egresses through the peer's fixed IP,
+   query Cloudflare's trace endpoint on that app - it returns the source IP Cloudflare sees:
+   ```
+   curl https://<app>.autoguru.com.au/cdn-cgi/trace    # -> ip=54.253.102.22 (the routing-peer EIP)
+   ```
+   Gate (COM-145): that IP must be the routing-peer EIP (`54.253.102.22`), not the user's local IP.
+   Verified 2026-07-10. Pritunl stays live in parallel until the cutover.

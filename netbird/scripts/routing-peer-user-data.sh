@@ -5,10 +5,13 @@ set -euo pipefail
 dnf install -y docker
 systemctl enable --now docker
 
-# Install Docker Compose plugin
+# Install Docker Compose plugin (pinned + checksum-verified; COM-147)
+COMPOSE_VERSION="v5.3.1"
+COMPOSE_SHA256="f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959"
 mkdir -p /usr/local/lib/docker/cli-plugins
-curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
   -o /usr/local/lib/docker/cli-plugins/docker-compose
+echo "${COMPOSE_SHA256}  /usr/local/lib/docker/cli-plugins/docker-compose" | sha256sum -c
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Fetch Netbird setup key from Secrets Manager and write to .env (not stored in source control)
@@ -21,18 +24,17 @@ SETUP_KEY=$(aws secretsmanager get-secret-value \
 mkdir -p /opt/netbird
 cat > /opt/netbird/.env << EOF
 NB_SETUP_KEY=${SETUP_KEY}
-NB_MANAGEMENT_URL=https://netbird.autoguru.com.au
+NB_MANAGEMENT_URL=https://netbird.autoguru.com.au:33073
 EOF
 chmod 0600 /opt/netbird/.env
 
 # Routing peer runs the Netbird agent in host networking with NET_ADMIN to manage routes.
-# TODO (before production cutover): pin to fixed, checksum-verified versions instead of :latest
-# (the docker compose plugin downloaded above and netbirdio/netbird below) so the peer and the
-# control plane cannot drift apart across rebuilds. Matches the repo's pinned-binary convention.
+# Image pinned by tag + digest (COM-147). MUST match the control-plane management line (0.74.x) so the
+# agent and management stay compatible; keep this in lockstep with NETBIRD_MANAGEMENT_TAG.
 cat > /opt/netbird/docker-compose.yml << 'COMPOSE'
 services:
   netbird:
-    image: netbirdio/netbird:latest
+    image: netbirdio/netbird:0.74.6@sha256:55a93ee3d2cad5d1a025a08316243fc758c938e150073dd39c747baec8778153
     container_name: netbird-routing-peer
     restart: unless-stopped
     network_mode: host
