@@ -108,6 +108,43 @@ jobs:
 
 ---
 
+## 🏷️ Versioning
+
+These reusable workflows are versioned with semantic version tags (`vMAJOR.MINOR.PATCH`). Callers are expected to pin to a tag rather than to a branch such as `@main`, so that upstream changes never alter caller behaviour without a deliberate opt-in.
+
+### Version bump rules
+
+| Bump | When to use |
+|---|---|
+| **MAJOR** | Breaking change to a workflow's public contract: an input is renamed or removed, default behaviour changes in a way that could red-line existing callers, permissions requirements grow, or the invocation pattern itself changes. |
+| **MINOR** | Backwards-compatible addition: a new optional input, a new job step that improves output without breaking existing consumers, a version bump of a pinned tool that keeps the same interface. |
+| **PATCH** | Bug fix or documentation-only change with no behavioural difference for callers. |
+
+### Cutting a new tag
+
+After a change lands on `main`:
+
+```bash
+git tag -a vX.Y.Z -m "Short summary of the release"
+git push origin vX.Y.Z
+```
+
+For visibility, also create a GitHub Release from the tag with a brief changelog.
+
+### Pinning strategy for callers
+
+- **Recommended default**: pin to the exact tag `@vX.Y.Z`. Fully immutable, no surprises. If the caller repository has Renovate or Dependabot configured to track workflow tags, a bump PR is opened automatically when a new tag is released, so the review lives on the caller side rather than happening silently upstream. Without that configuration, exact-tag pinning strands the caller on the pinned version until a manual bump, so teams should either enable one of those bots or set a periodic reminder to bump.
+- Acceptable alternatives if a team wants faster propagation of patches:
+  - `@vX.Y` to accept PATCH bumps automatically.
+  - `@vX` to accept MINOR and PATCH bumps automatically.
+- **Not recommended**: pin to a branch (`@main`, `@develop`). It removes the caller's review gate against unintended upstream changes.
+
+### Deprecation window
+
+MAJOR bumps require at least one MINOR release preceding them where the old behaviour is marked deprecated (comment in workflow + note in release changelog). Callers get one clean release cycle to migrate.
+
+---
+
 ## 📖 How to Use
 
 1. 📂 **Add the appropriate workflow reference** in your repository inside `.github/workflows/`.
