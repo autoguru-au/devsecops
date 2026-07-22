@@ -41,7 +41,7 @@ services:
     cap_add:
       - NET_ADMIN
     volumes:
-      - /var/lib/netbird:/etc/netbird
+      - /var/lib/netbird:/var/lib/netbird
     env_file:
       - /opt/netbird/.env
 COMPOSE
