@@ -34,14 +34,14 @@ chmod 0600 /opt/netbird/.env
 cat > /opt/netbird/docker-compose.yml << 'COMPOSE'
 services:
   netbird:
-    image: netbirdio/netbird:0.74.6@sha256:55a93ee3d2cad5d1a025a08316243fc758c938e150073dd39c747baec8778153
+    image: netbirdio/netbird:0.74.7@sha256:b63f4c1584118aeebacfdfd841f0351122a53fccac182b4c43be428c2c9a6b73
     container_name: netbird-routing-peer
     restart: unless-stopped
     network_mode: host
     cap_add:
       - NET_ADMIN
     volumes:
-      - /var/lib/netbird:/etc/netbird
+      - /var/lib/netbird:/var/lib/netbird
     env_file:
       - /opt/netbird/.env
 COMPOSE
