@@ -43,6 +43,13 @@ NETBIRD_DASH_AUTH_USE_AUDIENCE=false
 # URIs on the Entra app: https://<domain>/auth and https://<domain>/silent-auth.
 NETBIRD_AUTH_REDIRECT_URI="/auth"
 NETBIRD_AUTH_SILENT_REDIRECT_URI="/silent-auth"
+# Desktop client PKCE login opens a localhost callback port. On Windows the Hyper-V/WSL/Docker
+# dynamic reserved-port range (49152-65535) can grab 53000, so the client cannot bind the callback,
+# falls back to the device-authorization flow (which we do not run) and login fails with
+# "no SSO provider returned from management". Offer extra fallback ports BELOW 49152 so Windows can
+# never take them (the client picks the first free one). These four ports must also be registered as
+# loopback redirect URIs on the Entra app (Entra side owned by Mike). COM-188.
+NETBIRD_AUTH_PKCE_REDIRECT_URL_PORTS="53000,8976,35000,43000"
 # Pin the whole control-plane stack to a MATCHED netbird release line (COM-147). Management and the
 # dashboard are versioned separately and MUST be paired: netbird 0.74.x pairs with dashboard v2.90.x.
 # Mixing release lines breaks login (the older dashboard v2.39.0 does not understand the 0.74.x
