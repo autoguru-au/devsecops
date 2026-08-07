@@ -38,9 +38,15 @@ the assembly at build time.
 2. The routing-peer setup key secret `/netbird/routing-peer/setup-key` is created with a placeholder
    value by the routing-peer stack and overwritten with a real setup key (from the dashboard) after
    the control plane is set up.
-3. The Entra app is a **public PKCE SPA client** (no client secret). It must have, under the
-   **Single-page application** platform, redirect URIs `https://netbird.autoguru.com.au/auth` and
-   `https://netbird.autoguru.com.au/silent-auth`.
+3. The Entra app is a **public PKCE SPA client** (no client secret). It must have:
+   - Under the **Single-page application** platform, redirect URIs
+     `https://netbird.autoguru.com.au/auth` and `https://netbird.autoguru.com.au/silent-auth`
+     (dashboard browser login).
+   - Under the **Mobile and desktop applications** platform, loopback redirect URIs
+     `http://localhost:53000`, `http://localhost:8976`, `http://localhost:35000` and
+     `http://localhost:43000` (desktop-client PKCE callback). These must match
+     `NETBIRD_AUTH_PKCE_REDIRECT_URL_PORTS` in `setup.env`; without them the desktop login fails
+     with "no SSO provider returned from management". COM-188.
 
 ## Deploy
 
