@@ -4,6 +4,7 @@ using Amazon.CDK.AWS.CloudWatch.Actions;
 using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.KMS;
+using Amazon.CDK.AWS.Logs;
 using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.SecretsManager;
 using Constructs;
@@ -40,6 +41,19 @@ public class NetbirdControlPlaneStack : Stack
             ],
         });
         entraSecret.GrantRead(instanceRole);
+
+        // Management-server log group (2026-08-26 JWKS incident). The management
+        // container is configured (docker-compose.override.yml, see control-plane-user-data.sh)
+        // to ship its logs here via the awslogs driver, so the JwksKeyfuncErrors metric filter
+        // below can catch a recurrence of the Entra key-rotation outage instead of it going
+        // unnoticed until users report "Login Failed".
+        var managementLogGroup = new LogGroup(this, "ManagementLogGroup", new LogGroupProps
+        {
+            LogGroupName = "/netbird/control-plane/management",
+            Retention = RetentionDays.THREE_MONTHS,
+            RemovalPolicy = RemovalPolicy.RETAIN,
+        });
+        managementLogGroup.GrantWrite(instanceRole);
 
         // Netbird runs in the shared-services VPC public-subnet tier, next to the Pritunl VPN it
         // replaces (the ITOC/Thoughtworks Well-Architected layout). Reusing the shared VPC means it
@@ -203,6 +217,36 @@ public class NetbirdControlPlaneStack : Stack
         var slackTopic = Shared.SlackNotifierTopic(this);
         cpuAlarm.AddAlarmAction(new SnsAction(slackTopic));
         cpuAlarm.AddOkAction(new SnsAction(slackTopic));
+
+        // JWKS key-refresh alarm (2026-08-26 incident). When Entra rotates its token-signing key,
+        // the management server logs this exact line for every failed login/API call/peer
+        // handshake. IdpSignKeyRefreshEnabled=true (set in control-plane-user-data.sh) makes the
+        // server self-heal by refetching the JWKS, but alarm anyway: it is cheap insurance against
+        // a future Netbird version reverting the default, a misconfigured re-provision, or the
+        // refetch itself failing (e.g. egress to login.microsoftonline.com blocked).
+        var jwksErrorFilter = new MetricFilter(this, "JwksKeyfuncErrorsFilter", new MetricFilterProps
+        {
+            LogGroup = managementLogGroup,
+            FilterPattern = FilterPattern.Literal("\"unable to find appropriate key\""),
+            MetricNamespace = "Netbird/ControlPlane",
+            MetricName = "JwksKeyfuncErrors",
+            MetricValue = "1",
+            DefaultValue = 0,
+        });
+        var jwksErrorAlarm = new Alarm(this, "JwksKeyfuncErrorsAlarm", new AlarmProps
+        {
+            Metric = jwksErrorFilter.Metric(new MetricOptions
+            {
+                Period = Duration.Minutes(5),
+                Statistic = "Sum",
+            }),
+            Threshold = 1,
+            EvaluationPeriods = 1,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = TreatMissingData.NOT_BREACHING,
+        });
+        jwksErrorAlarm.AddAlarmAction(new SnsAction(slackTopic));
+        jwksErrorAlarm.AddOkAction(new SnsAction(slackTopic));
 
         _ = new CfnOutput(this, "ControlPlaneIp", new CfnOutputProps
         {

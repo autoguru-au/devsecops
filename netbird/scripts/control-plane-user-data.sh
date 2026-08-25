@@ -78,6 +78,17 @@ chmod 0600 /opt/netbird/setup.env
 #   git clone --depth 1 --branch "$NETBIRD_VERSION" https://github.com/netbirdio/netbird/ /opt/netbird/src
 #   cp /opt/netbird/setup.env /opt/netbird/src/infrastructure_files/setup.env
 #   cd /opt/netbird/src/infrastructure_files && ./configure.sh   # -> artifacts/{docker-compose.yml,management.json,turnserver.conf}
+#   sed -i 's/"IdpSignKeyRefreshEnabled": false/"IdpSignKeyRefreshEnabled": true/' artifacts/management.json
+#   cat > artifacts/docker-compose.override.yml << 'YAML'
+#   services:
+#     management:
+#       logging:
+#         driver: awslogs
+#         options:
+#           awslogs-region: ap-southeast-2
+#           awslogs-group: /netbird/control-plane/management
+#           awslogs-stream: management
+#   YAML
 #   cd artifacts && docker compose up -d
 # NOTE (COM-147, datastore encryption key): configure.sh writes a DataStoreEncryptionKey into
 # management.json that encrypts user PII (email/name) at rest. It MUST be a STABLE value across
@@ -86,6 +97,16 @@ chmod 0600 /opt/netbird/setup.env
 # failed"). configure.sh preserves the key of an existing management.json; for production, source a
 # fixed key from Secrets Manager at boot and write it into management.json (recording it in setup.env
 # as NETBIRD_DATASTORE_ENCRYPTION_KEY) so every rebuild reuses the same key.
+# NOTE (2026-08-26 incident, JWKS key refresh): configure.sh leaves IdpSignKeyRefreshEnabled at its
+# default of false, so the management server caches Entra's signing keys once at startup and never
+# refreshes them. When Entra rotates its token-signing key, every login and API call starts failing
+# with "token is unverifiable: error while executing keyfunc: unable to find appropriate key" until
+# someone manually restarts the management container. Setting it true (above) makes the management
+# server refetch the JWKS itself when it hits an unknown key ID, so a future rotation self-heals
+# instead of causing an outage. The docker-compose.override.yml ships the management container's
+# logs to CloudWatch Logs (log group created by the CDK stack, see NetbirdControlPlaneStack.cs) so
+# a recurrence of this error pattern pages Slack via the JwksKeyfuncErrors alarm instead of going
+# unnoticed until users report "Login Failed".
 # Peers and the routing peer enroll with a pre-shared setup key (created in the dashboard, stored in
 # Secrets Manager); the dashboard admin login uses Entra SSO via the SPA app registration.
 echo "Control plane ready. Run Netbird setup via SSM after DNS propagation (Entra flow: configure.sh, not zitadel)." >> /var/log/netbird-setup.log
