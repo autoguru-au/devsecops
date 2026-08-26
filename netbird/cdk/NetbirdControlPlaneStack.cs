@@ -47,6 +47,9 @@ public class NetbirdControlPlaneStack : Stack
         // to ship its logs here via the awslogs driver, so the JwksKeyfuncErrors metric filter
         // below can catch a recurrence of the Entra key-rotation outage instead of it going
         // unnoticed until users report "Login Failed".
+        // Fixed LogGroupName + RETAIN means a future stack recreate (construct ID change, account
+        // move, etc.) would fail CREATE while this name still exists - not an issue today (the
+        // group does not exist yet), just something to remember if this construct is ever rebuilt.
         var managementLogGroup = new LogGroup(this, "ManagementLogGroup", new LogGroupProps
         {
             LogGroupName = "/netbird/control-plane/management",
