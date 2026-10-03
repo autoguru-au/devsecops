@@ -1,0 +1,27 @@
+{
+  "name": "@autoguru/datadog-terraform-infra",
+  "version": "0.1.0",
+  "private": true,
+  "sideEffects": false,
+  "bin": {
+    "datadog-terraform-infra-cdk": "bin/datadog-terraform-infra-cdk.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --all --profile shared",
+    "deploy:ci": "cdk deploy --all --require-approval never"
+  },
+  "devDependencies": {
+    "@types/node": "20.12.7",
+    "aws-cdk": "^2.1128.1",
+    "ts-node": "10.9.2",
+    "typescript": "~5.5.4"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.260.0",
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5.21"
+  }
+}
