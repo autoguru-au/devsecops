@@ -9,6 +9,13 @@ import type { Construct } from 'constructs';
 const GITHUB_REPO = 'autoguru-au/mfe';
 const REGION = 'ap-southeast-2';
 
+// ignite (autoguru-au/ignite) — Data & AI's Datadog monitors. Unlike mfe's roles above, which
+// predate a second consumer and can reach the whole bucket, ignite's are scoped to its own state
+// prefix, lock entries and secrets.
+const IGNITE_GITHUB_REPO = 'autoguru-au/ignite';
+const IGNITE_STATE_PREFIX = 'ignite/';
+const IGNITE_SECRET_PREFIX = 'datadog/ignite-monitors/';
+
 export class DatadogTerraformInfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -177,6 +184,108 @@ export class DatadogTerraformInfraStack extends cdk.Stack {
     readOnlyRole.addToPolicy(kmsPolicy);
 
     // ──────────────────────────────────────────
+    // ignite — secret shells and OIDC roles
+    // Actual secret values populated manually after deploy.
+    // ──────────────────────────────────────────
+    new secretsmanager.Secret(this, 'IgniteDatadogApiKey', {
+      secretName: `${IGNITE_SECRET_PREFIX}api-key`,
+      description: 'Datadog API key for ignite monitor Terraform management',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    new secretsmanager.Secret(this, 'IgniteDatadogAppKey', {
+      secretName: `${IGNITE_SECRET_PREFIX}app-key`,
+      description: 'Datadog application key for ignite monitor Terraform management',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const igniteSecretsReadPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [`arn:aws:secretsmanager:${REGION}:${this.account}:secret:${IGNITE_SECRET_PREFIX}*`],
+    });
+
+    // ListBucket stays bucket-wide: the S3 backend lists workspace prefixes on init, and a listing
+    // exposes key names only. Object reads and writes are confined to ignite's prefix.
+    const igniteStateReadPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:GetObject', 's3:ListBucket'],
+      resources: [stateBucket.bucketArn, `${stateBucket.bucketArn}/${IGNITE_STATE_PREFIX}*`],
+    });
+
+    const igniteStateWritePolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:PutObject'],
+      resources: [`${stateBucket.bucketArn}/${IGNITE_STATE_PREFIX}*`],
+    });
+
+    // The S3 backend's lock items are keyed "<bucket>/<state key>" (plus a "-md5" digest item).
+    const igniteLockKeyCondition = {
+      'ForAllValues:StringLike': {
+        'dynamodb:LeadingKeys': [`${stateBucket.bucketName}/${IGNITE_STATE_PREFIX}*`],
+      },
+    };
+
+    const igniteLockReadPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:GetItem'],
+      resources: [lockTable.tableArn],
+      conditions: igniteLockKeyCondition,
+    });
+
+    const igniteLockWritePolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['dynamodb:PutItem', 'dynamodb:DeleteItem'],
+      resources: [lockTable.tableArn],
+      conditions: igniteLockKeyCondition,
+    });
+
+    const igniteWriteRole = new iam.Role(this, 'IgniteTerraformWriteRole', {
+      roleName: 'github-actions-terraform-datadog-ignite',
+      assumedBy: new iam.FederatedPrincipal(
+        oidcProvider.openIdConnectProviderArn,
+        {
+          StringEquals: {
+            'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+          },
+          StringLike: {
+            'token.actions.githubusercontent.com:sub': `repo:${IGNITE_GITHUB_REPO}:ref:refs/heads/main`,
+          },
+        },
+        'sts:AssumeRoleWithWebIdentity'
+      ),
+    });
+
+    igniteWriteRole.addToPolicy(igniteSecretsReadPolicy);
+    igniteWriteRole.addToPolicy(igniteStateReadPolicy);
+    igniteWriteRole.addToPolicy(igniteStateWritePolicy);
+    igniteWriteRole.addToPolicy(igniteLockReadPolicy);
+    igniteWriteRole.addToPolicy(igniteLockWritePolicy);
+    igniteWriteRole.addToPolicy(kmsPolicy);
+
+    const igniteReadOnlyRole = new iam.Role(this, 'IgniteTerraformReadOnlyRole', {
+      roleName: 'github-actions-terraform-datadog-ignite-readonly',
+      assumedBy: new iam.FederatedPrincipal(
+        oidcProvider.openIdConnectProviderArn,
+        {
+          StringEquals: {
+            'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+          },
+          StringLike: {
+            'token.actions.githubusercontent.com:sub': `repo:${IGNITE_GITHUB_REPO}:pull_request`,
+          },
+        },
+        'sts:AssumeRoleWithWebIdentity'
+      ),
+    });
+
+    igniteReadOnlyRole.addToPolicy(igniteSecretsReadPolicy);
+    igniteReadOnlyRole.addToPolicy(igniteStateReadPolicy);
+    igniteReadOnlyRole.addToPolicy(igniteLockReadPolicy);
+    igniteReadOnlyRole.addToPolicy(igniteLockWritePolicy);
+    igniteReadOnlyRole.addToPolicy(kmsPolicy);
+
+    // ──────────────────────────────────────────
     // CloudFormation Exports
     // ──────────────────────────────────────────
     new cdk.CfnOutput(this, 'TerraformStateBucketName', {
@@ -212,6 +321,16 @@ export class DatadogTerraformInfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'TerraformReadOnlyRoleArn', {
       value: readOnlyRole.roleArn,
       exportName: 'DatadogTerraformReadOnlyRoleArn',
+    });
+
+    new cdk.CfnOutput(this, 'IgniteTerraformWriteRoleArn', {
+      value: igniteWriteRole.roleArn,
+      exportName: 'DatadogTerraformIgniteWriteRoleArn',
+    });
+
+    new cdk.CfnOutput(this, 'IgniteTerraformReadOnlyRoleArn', {
+      value: igniteReadOnlyRole.roleArn,
+      exportName: 'DatadogTerraformIgniteReadOnlyRoleArn',
     });
   }
 }
