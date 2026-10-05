@@ -21,8 +21,8 @@ public sealed class IdentityCenterStackTests(TemplateFixture fixture)
         Assert.Equal(
             new[]
             {
-                "AIOps-Mlflow-Production", "App-AIOps", "App-AIOps-Evaluate", "App-AIOps-Rater",
-                "App-AIOps-Unblind", "App-TechLeadership",
+                "AIOps-Mlflow-Production", "App-AILeadership", "App-AIOps", "App-AIOps-Evaluate",
+                "App-AIOps-Rater", "App-AIOps-Unblind", "App-TechLeadership",
             },
             GroupNamesByLogicalId.Values.Order());
     }
@@ -73,15 +73,21 @@ public sealed class IdentityCenterStackTests(TemplateFixture fixture)
         Assert.Equal(
             new[]
             {
+                ("App-AILeadership", Users.AmirZahedi),
+                ("App-AILeadership", Users.AnthonyKeller),
+                ("App-AILeadership", Users.LukeAtkins),
+                ("App-AILeadership", Users.MikeNadelko),
                 ("App-AIOps-Evaluate", Users.AdamWebb),
                 ("App-AIOps-Evaluate", Users.AmirZahedi),
+                ("App-AIOps-Evaluate", Users.RachelWhite),
                 ("App-AIOps-Unblind", Users.AmirZahedi),
+                ("App-AIOps-Unblind", Users.RachelWhite),
             }.OrderBy(m => m.Item1).ThenBy(m => m.Item2),
             members);
     }
 
     [Fact]
-    public void Only_the_three_new_groups_are_assigned_to_the_AIOps_application()
+    public void Only_the_three_AIOps_evaluation_groups_are_assigned_to_the_AIOps_application()
     {
         var assignments = Template.OfType("AWS::SSO::ApplicationAssignment").Select(a => a.Resource.Props()).ToArray();
 

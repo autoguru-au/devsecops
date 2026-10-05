@@ -49,6 +49,7 @@ public sealed class IdentityCenterStack : Stack
             "AIOps evaluation workbench: golden set curation and experiments. Application access only, no AWS account permissions.");
         Member("AppAIOpsEvaluateAmirZahedi", evaluate, Users.AmirZahedi);
         Member("AppAIOpsEvaluateAdamWebb", evaluate, Users.AdamWebb);
+        Member("AppAIOpsEvaluateRachelWhite", evaluate, Users.RachelWhite);
         AssignToAiops("AppAIOpsEvaluateAiopsAssignment", evaluate);
 
         // No members until the second rater is named. Never give this group a permission set:
@@ -60,6 +61,7 @@ public sealed class IdentityCenterStack : Stack
         var unblind = Group("AppAIOpsUnblindGroup", "App-AIOps-Unblind",
             "AIOps: reveal a closed blind round. Application access only, no AWS account permissions.");
         Member("AppAIOpsUnblindAmirZahedi", unblind, Users.AmirZahedi);
+        Member("AppAIOpsUnblindRachelWhite", unblind, Users.RachelWhite);
         AssignToAiops("AppAIOpsUnblindAiopsAssignment", unblind);
 
         // Read-only access to what an evaluation run touches in the shared account. Runs start only
@@ -92,6 +94,15 @@ public sealed class IdentityCenterStack : Stack
             TargetId = Accounts.Shared,
             TargetType = "AWS_ACCOUNT",
         });
+
+        // GuruShare points its AI Team's leadership at this group. Like App-TechLeadership it is not
+        // assigned to the AIOps application, and it never takes a permission set.
+        var aiLeadership = Group("AppAILeadershipGroup", "App-AILeadership",
+            "AI leadership cohort. Application access only, no AWS account permissions.");
+        Member("AppAILeadershipAmirZahedi", aiLeadership, Users.AmirZahedi);
+        Member("AppAILeadershipAnthonyKeller", aiLeadership, Users.AnthonyKeller);
+        Member("AppAILeadershipLukeAtkins", aiLeadership, Users.LukeAtkins);
+        Member("AppAILeadershipMikeNadelko", aiLeadership, Users.MikeNadelko);
     }
 
     /// <summary>

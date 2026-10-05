@@ -43,6 +43,18 @@ internal static class Users
 
     /// <summary>adam@autoguru.com.au</summary>
     public const string AdamWebb = "597e6438-4051-704e-b728-eaa1994dc61c";
+
+    /// <summary>rachel@autoguru.com.au</summary>
+    public const string RachelWhite = "d93e44a8-d0b1-7060-84d8-e7c8871cea9d";
+
+    /// <summary>anthony@autoguru.com.au</summary>
+    public const string AnthonyKeller = "195ec438-d001-7063-c3ed-d26a420a300c";
+
+    /// <summary>luke.atkins@autoguru.com.au</summary>
+    public const string LukeAtkins = "598ee428-0011-70b5-abb5-a334db2a1b4d";
+
+    /// <summary>mike@autoguru.com.au</summary>
+    public const string MikeNadelko = "d96eb438-5041-70f8-d5e6-79dd90b1269a";
 }
 
 /// <summary>

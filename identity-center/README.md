@@ -19,9 +19,10 @@ UUID map, GuruShare's group mirror, ignite's MLflow instance list) but must not 
 | `App-AIOps` | console-managed (predates this stack) | AIOps (assigned in the console) | none |
 | `App-TechLeadership` | console-managed (predates this stack) | assigned in the console | none |
 | `AIOps-Mlflow-Production` | none | none | `AIOpsMlflowProduction` in Production, still declared in autoguru `master-06-permissionsets.yml` |
-| `App-AIOps-Evaluate` | Amir Zahedi, Adam Webb | AIOps | `AIOpsEvaluation` in shared (AI-777) |
+| `App-AIOps-Evaluate` | Amir Zahedi, Adam Webb, Rachel White | AIOps | `AIOpsEvaluation` in shared (AI-777) |
 | `App-AIOps-Rater` | none yet: the second rater is not named | AIOps | **never**: raters rank and label in the console only |
-| `App-AIOps-Unblind` | Amir Zahedi | AIOps | none |
+| `App-AIOps-Unblind` | Amir Zahedi, Rachel White | AIOps | none |
+| `App-AILeadership` | Amir Zahedi, Anthony Keller, Luke Atkins, Mike Nadelko | none (GuruShare's AI Team leadership reads it) | none |
 
 Not here, on purpose:
 
@@ -111,7 +112,8 @@ Run these in order. Steps 1 and 2 are pull requests in `autoguru-au/autoguru`.
    ```
 
    It starts its first run on creation. The change set should only add resources: the three AIOps
-   groups, their memberships and application assignments, `AIOpsEvaluation` and its assignment.
+   groups and `App-AILeadership`, their memberships, the AIOps application assignments,
+   `AIOpsEvaluation` and its assignment.
    It must not modify or replace an imported group. Review it in the management account, then
    approve the run.
 
