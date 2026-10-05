@@ -48,7 +48,7 @@ public sealed class IdentityCenterStack : Stack
         // AIOps evaluation (AI-777, epic AI-764). AIOps maps each group's id to its own groups, so
         // all three are assigned to the AIOps SAML application: without that, members cannot sign in.
         var evaluate = Group("AppAIOpsEvaluateGroup", "App-AIOps-Evaluate",
-            "AIOps evaluation workbench: golden set curation and experiments. Application access only, no AWS account permissions.");
+            "AIOps evaluation workbench: golden set curation and experiments. AIOps application access, plus the AIOpsEvaluation permission set in autoguru-shared.");
         Member("AppAIOpsEvaluateAmirZahedi", evaluate, Users.AmirZahedi);
         Member("AppAIOpsEvaluateAdamWebb", evaluate, Users.AdamWebb);
         Member("AppAIOpsEvaluateRachelWhite", evaluate, Users.RachelWhite);
@@ -66,10 +66,13 @@ public sealed class IdentityCenterStack : Stack
         Member("AppAIOpsUnblindRachelWhite", unblind, Users.RachelWhite);
         AssignToAiops("AppAIOpsUnblindAiopsAssignment", unblind);
 
-        // Read-only access to what an evaluation run touches in the shared account. Runs start only
-        // through the AIOps console backend, so there is no states:StartExecution here, and no S3
-        // (nothing on the golden set bucket) and no bedrock:InvokeModel. AIOpsEvaluationSet and
-        // AIOpsGoldenRegistrar wait on the CISO's approval (AIOps PRD OQ-45) and are not declared.
+        // What an evaluation run touches in the shared account. The MLflow statement is not read-only:
+        // sagemaker:CallMlflowAppApi reaches the whole MLflow API, so a member can log runs and
+        // experiments on the shared instance. The runner and logging-config statements only read.
+        // Runs start only through the AIOps console backend, so there is no states:StartExecution
+        // here, and no S3 (nothing on the golden set bucket) and no bedrock:InvokeModel.
+        // AIOpsEvaluationSet and AIOpsGoldenRegistrar wait on the CISO's approval (AIOps PRD OQ-45)
+        // and are not declared.
         //
         // aiops-golden-eval does not exist until AI-773 deploys it; until then its statement grants
         // nothing.
@@ -77,7 +80,7 @@ public sealed class IdentityCenterStack : Stack
         {
             InstanceArn = IdentityCenterInstance.InstanceArn,
             Name = "AIOpsEvaluation",
-            Description = "AIOps evaluation: shared MLflow and golden-eval runner read access (AI-777).",
+            Description = "AIOps evaluation: shared MLflow API access, golden-eval runner and invocation-logging read access (AI-777).",
             SessionDuration = "PT1H",
             InlinePolicy = AiopsEvaluationPolicy,
             Tags = new[]
