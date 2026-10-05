@@ -135,7 +135,17 @@ Run these in order. Steps 1 and 2 are pull requests in `autoguru-au/autoguru`.
    `identity-center-pipeline`, the name is unclaimed, and anyone in the shared account who can
    create an IAM role could create one by that name and assume the deploy role. Check first that
    `aws iam get-role --role-name identity-center-pipeline` in the shared account says
-   `NoSuchEntity`. If step 6 fails, delete the deploy roles stack until it can be retried.
+   `NoSuchEntity`. If step 6 fails, delete the deploy roles stack until it can be retried. It has
+   termination protection, so turn that off first (management account, administrator credentials):
+
+   ```bash
+   aws cloudformation update-termination-protection --region ap-southeast-2 \
+     --no-enable-termination-protection \
+     --stack-name IdentityCenterDeployRoles
+   aws cloudformation delete-stack --region ap-southeast-2 --stack-name IdentityCenterDeployRoles
+   ```
+
+   Its next deploy, from `Program.cs`, turns termination protection back on.
 6. **Deploy the pipeline** (shared account), immediately after step 5:
 
    ```bash
