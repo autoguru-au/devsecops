@@ -60,6 +60,7 @@ public sealed class IdentityCenterStackTests(TemplateFixture fixture)
             g => Assert.Equal("Retain", g.Resource["DeletionPolicy"]!.GetValue<string>()));
     }
 
+    // Literal ids, not Users.*, so a mistyped constant fails here instead of agreeing with itself.
     [Fact]
     public void Memberships_are_exactly_the_approved_people()
     {
@@ -73,15 +74,15 @@ public sealed class IdentityCenterStackTests(TemplateFixture fixture)
         Assert.Equal(
             new[]
             {
-                ("App-AILeadership", Users.AmirZahedi),
-                ("App-AILeadership", Users.AnthonyKeller),
-                ("App-AILeadership", Users.LukeAtkins),
-                ("App-AILeadership", Users.MikeNadelko),
-                ("App-AIOps-Evaluate", Users.AdamWebb),
-                ("App-AIOps-Evaluate", Users.AmirZahedi),
-                ("App-AIOps-Evaluate", Users.RachelWhite),
-                ("App-AIOps-Unblind", Users.AmirZahedi),
-                ("App-AIOps-Unblind", Users.RachelWhite),
+                ("App-AILeadership", "790e7458-5051-7042-bdd5-d9a8dddd61bd"), // AmirZahedi
+                ("App-AILeadership", "195ec438-d001-7063-c3ed-d26a420a300c"), // AnthonyKeller
+                ("App-AILeadership", "598ee428-0011-70b5-abb5-a334db2a1b4d"), // LukeAtkins
+                ("App-AILeadership", "d96eb438-5041-70f8-d5e6-79dd90b1269a"), // MikeNadelko
+                ("App-AIOps-Evaluate", "597e6438-4051-704e-b728-eaa1994dc61c"), // AdamWebb
+                ("App-AIOps-Evaluate", "790e7458-5051-7042-bdd5-d9a8dddd61bd"), // AmirZahedi
+                ("App-AIOps-Evaluate", "d93e44a8-d0b1-7060-84d8-e7c8871cea9d"), // RachelWhite
+                ("App-AIOps-Unblind", "790e7458-5051-7042-bdd5-d9a8dddd61bd"), // AmirZahedi
+                ("App-AIOps-Unblind", "d93e44a8-d0b1-7060-84d8-e7c8871cea9d"), // RachelWhite
             }.OrderBy(m => m.Item1).ThenBy(m => m.Item2),
             members);
     }

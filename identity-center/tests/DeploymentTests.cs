@@ -42,15 +42,61 @@ public sealed class DeploymentTests(TemplateFixture fixture)
             cloudFormation["Resource"]!.GetValue<string>());
     }
 
-    [Fact]
-    public void Execution_role_can_never_assign_in_the_management_account()
-    {
-        var deny = PolicyStatementsOf(DeployNames.CloudFormationExecutionRoleName)
-            .Single(s => s["Effect"]!.GetValue<string>() == "Deny");
+    private JsonNode Statement(string roleName, string sid) => PolicyStatementsOf(roleName)
+        .Single(s => s["Sid"]!.GetValue<string>() == sid);
 
+    [Fact]
+    public void Execution_role_can_never_assign_or_provision_in_the_management_account()
+    {
+        var deny = Statement(DeployNames.CloudFormationExecutionRoleName, "NeverGrantInManagementAccount");
+
+        Assert.Equal("Deny", deny["Effect"]!.GetValue<string>());
         Assert.Equal("arn:aws:sso:::account/406422318285", deny["Resource"]!.GetValue<string>());
-        Assert.Equivalent(new[] { "sso:CreateAccountAssignment", "sso:DeleteAccountAssignment" },
+        Assert.Equivalent(new[] { "sso:CreateAccountAssignment", "sso:DeleteAccountAssignment", "sso:ProvisionPermissionSet" },
             deny["Action"]!.AsArray().Select(a => a!.GetValue<string>()));
+    }
+
+    [Fact]
+    public void Execution_role_can_never_create_change_or_delete_the_instance()
+    {
+        var deny = Statement(DeployNames.CloudFormationExecutionRoleName, "NeverChangeTheInstance");
+
+        Assert.Equal("Deny", deny["Effect"]!.GetValue<string>());
+        Assert.Equal("*", deny["Resource"]!.GetValue<string>());
+        Assert.Equivalent(new[] { "sso:CreateInstance*", "sso:UpdateInstance*", "sso:DeleteInstance*" },
+            deny["Action"]!.AsArray().Select(a => a!.GetValue<string>()));
+    }
+
+    [Fact]
+    public void Execution_role_allows_no_service_wide_wildcard_and_no_group_deletion()
+    {
+        var allowed = PolicyStatementsOf(DeployNames.CloudFormationExecutionRoleName)
+            .Where(s => s["Effect"]!.GetValue<string>() == "Allow")
+            .SelectMany(s => s["Action"]!.Strings())
+            .ToArray();
+
+        Assert.DoesNotContain(allowed, a => a.EndsWith(":*", StringComparison.Ordinal) || a == "*");
+        Assert.DoesNotContain("identitystore:DeleteGroup", allowed);
+    }
+
+    [Fact]
+    public void Execution_role_assigns_groups_to_the_AIOps_application_only()
+    {
+        var statement = Statement(DeployNames.CloudFormationExecutionRoleName, "AiopsApplicationAssignments");
+
+        Assert.Equivalent(
+            new[] { IdentityCenterInstance.InstanceArn, IdentityCenterInstance.AiopsSamlApplicationArn },
+            statement["Resource"]!.Strings());
+    }
+
+    [Fact]
+    public void Deploy_role_cannot_create_an_import_change_set()
+    {
+        var deny = Statement(DeployNames.DeployActionRoleName, "NoImportChangeSets");
+
+        Assert.Equal("Deny", deny["Effect"]!.GetValue<string>());
+        Assert.Equal("cloudformation:CreateChangeSet", deny["Action"]!.GetValue<string>());
+        Assert.Equal("false", deny["Condition"]!["Null"]!["cloudformation:ImportResourceTypes"]!.GetValue<string>());
     }
 
     [Fact]

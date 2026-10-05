@@ -24,6 +24,10 @@ public sealed class PipelineStack : Stack
 {
     private const string ChangeSetName = "identity-center-pipeline";
 
+    private const string DotnetInstallScriptCommit = "e5cf1dd2d1540ed05ac84f8eb8c5cdec2807621e";
+    private const string DotnetInstallScriptSha256 = "082f7685e156738a1b2e2ed8381a621870d4ce8e8c59278034556f05c186eb2e";
+    private const string DotnetSdkVersion = "10.0.401";
+
     public PipelineStack(Construct scope, string id, IStackProps props)
         : base(scope, id, props)
     {
@@ -83,8 +87,11 @@ public sealed class PipelineStack : Stack
                         ["runtime-versions"] = new Dictionary<string, object> { ["nodejs"] = "22" },
                         ["commands"] = new[]
                         {
-                            "curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh",
-                            "bash /tmp/dotnet-install.sh --channel 10.0 --install-dir \"$HOME/.dotnet\"",
+                            // The install script at a fixed commit, checked against its hash, and an exact SDK, so
+                            // neither an upstream script change nor a new 10.0 release can change what deploys.
+                            $"curl -fsSL https://raw.githubusercontent.com/dotnet/install-scripts/{DotnetInstallScriptCommit}/src/dotnet-install.sh -o /tmp/dotnet-install.sh",
+                            $"echo \"{DotnetInstallScriptSha256}  /tmp/dotnet-install.sh\" | sha256sum -c -",
+                            $"bash /tmp/dotnet-install.sh --version {DotnetSdkVersion} --install-dir \"$HOME/.dotnet\"",
                             "export DOTNET_ROOT=\"$HOME/.dotnet\" PATH=\"$HOME/.dotnet:$PATH\"",
                             // Same version as the identity-center workflow, so a CLI release cannot change a deploy.
                             "npm install -g aws-cdk@2.1144.0",

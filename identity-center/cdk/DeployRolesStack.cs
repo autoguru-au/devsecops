@@ -13,8 +13,12 @@ namespace IdentityCenter.Cdk;
 ///
 /// What this hands the shared account: whoever can drive the pipeline role, or approve an execution,
 /// can change Identity Center, and Identity Center can grant any permission set in any member
-/// account. The management account itself is excluded (see the deny below), but nothing else is.
-/// The gates are pull-request review on devsecops main and the pipeline's manual approval.
+/// account. The execution role cannot assign or provision a permission set in the management account,
+/// change or delete the Identity Center instance, delete a group, or assign groups to any application
+/// but AIOps, and the deploy role cannot import. It can still add anyone to any existing group,
+/// including one that already holds access to the management account, because group ids are not
+/// known in advance. The gates are pull-request review on devsecops main and the pipeline's manual
+/// approval.
 /// </summary>
 public sealed class DeployRolesStack : Stack
 {
@@ -32,14 +36,55 @@ public sealed class DeployRolesStack : Stack
             MaxSessionDuration = Duration.Hours(1),
         });
 
-        // Identity Center offers no useful resource scoping for its admin actions: permission sets,
-        // assignments and applications are all addressed through the one instance.
+        var instanceArn = IdentityCenterInstance.InstanceArn;
+        var instanceId = instanceArn[(instanceArn.LastIndexOf('/') + 1)..];
+
         execution.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {
-            Sid = "IdentityCenterAdmin",
-            Actions = new[] { "sso:*" },
+            Sid = "IdentityCenterRead",
+            Actions = new[] { "sso:Describe*", "sso:List*", "sso:Get*" },
             Resources = new[] { "*" },
         }));
+        execution.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "PermissionSetsAndAccountAssignments",
+            Actions = new[]
+            {
+                "sso:CreatePermissionSet",
+                "sso:UpdatePermissionSet",
+                "sso:DeletePermissionSet",
+                "sso:PutInlinePolicyToPermissionSet",
+                "sso:DeleteInlinePolicyFromPermissionSet",
+                "sso:AttachManagedPolicyToPermissionSet",
+                "sso:DetachManagedPolicyFromPermissionSet",
+                "sso:AttachCustomerManagedPolicyReferenceToPermissionSet",
+                "sso:DetachCustomerManagedPolicyReferenceFromPermissionSet",
+                "sso:PutPermissionsBoundaryToPermissionSet",
+                "sso:DeletePermissionsBoundaryFromPermissionSet",
+                "sso:ProvisionPermissionSet",
+                "sso:CreateAccountAssignment",
+                "sso:DeleteAccountAssignment",
+                "sso:TagResource",
+                "sso:UntagResource",
+            },
+            Resources = new[]
+            {
+                instanceArn,
+                $"arn:aws:sso:::permissionSet/{instanceId}/*",
+                "arn:aws:sso:::account/*",
+            },
+        }));
+        // The one application this stack assigns groups to.
+        execution.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "AiopsApplicationAssignments",
+            Actions = new[] { "sso:CreateApplicationAssignment", "sso:DeleteApplicationAssignment" },
+            Resources = new[] { instanceArn, IdentityCenterInstance.AiopsSamlApplicationArn },
+        }));
+        // Group and membership ids are not known until the groups exist, so these stay on group/*:
+        // a template can add anyone to any existing group. Review and the manual approval are the
+        // control for that. There is no DeleteGroup: every group here is Retain, so CloudFormation
+        // never needs it, and without it no template can delete a group.
         execution.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {
             Sid = "IdentityStoreGroups",
@@ -47,7 +92,6 @@ public sealed class DeployRolesStack : Stack
             {
                 "identitystore:CreateGroup",
                 "identitystore:UpdateGroup",
-                "identitystore:DeleteGroup",
                 "identitystore:DescribeGroup",
                 "identitystore:ListGroups",
                 "identitystore:GetGroupId",
@@ -72,14 +116,22 @@ public sealed class DeployRolesStack : Stack
             Actions = new[] { "organizations:DescribeAccount", "organizations:DescribeOrganization", "organizations:ListAccounts" },
             Resources = new[] { "*" },
         }));
-        // A permission set assigned in the management account is the one grant Identity Center
-        // makes there, and it would put whoever controls this pipeline in charge of the org.
+        // A permission set assigned or provisioned in the management account is the one grant
+        // Identity Center makes there, and it would put whoever controls this pipeline in charge of
+        // the org.
         execution.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {
-            Sid = "NeverAssignInManagementAccount",
+            Sid = "NeverGrantInManagementAccount",
             Effect = Effect.DENY,
-            Actions = new[] { "sso:CreateAccountAssignment", "sso:DeleteAccountAssignment" },
+            Actions = new[] { "sso:CreateAccountAssignment", "sso:DeleteAccountAssignment", "sso:ProvisionPermissionSet" },
             Resources = new[] { $"arn:aws:sso:::account/{Accounts.Management}" },
+        }));
+        execution.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "NeverChangeTheInstance",
+            Effect = Effect.DENY,
+            Actions = new[] { "sso:CreateInstance*", "sso:UpdateInstance*", "sso:DeleteInstance*" },
+            Resources = new[] { "*" },
         }));
 
         var deploy = new Role(this, "PipelineDeployRole", new RoleProps
@@ -111,6 +163,20 @@ public sealed class DeployRolesStack : Stack
                 "cloudformation:DescribeStackEvents",
             },
             Resources = new[] { stackArn },
+        }));
+        // An import change set would let a template take over a resource it never created, such as a
+        // permission set provisioned in the management account. The one import (README) is run by
+        // an administrator by hand.
+        deploy.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "NoImportChangeSets",
+            Effect = Effect.DENY,
+            Actions = new[] { "cloudformation:CreateChangeSet" },
+            Resources = new[] { "*" },
+            Conditions = new Dictionary<string, object>
+            {
+                ["Null"] = new Dictionary<string, object> { ["cloudformation:ImportResourceTypes"] = "false" },
+            },
         }));
         deploy.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {

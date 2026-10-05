@@ -21,9 +21,11 @@ namespace IdentityCenter.Cdk;
 /// assignments keep CloudFormation's default (delete), so removing one from this file revokes the
 /// grant rather than orphaning it live.
 ///
-/// Memberships declared here are the only memberships of those groups: one GroupMembership per
-/// person, added and removed by pull request, never in the console. App-AIOps and
-/// App-TechLeadership predate this stack and their members are still managed in the console.
+/// Memberships of the groups created here are meant to be declared here only: one GroupMembership
+/// per person, added and removed by pull request. CloudFormation does not enforce that. A member
+/// added in the console stays a member, and no deploy removes it, so the console must not be used for
+/// these groups. App-AIOps and App-TechLeadership predate this stack and their members are still
+/// managed in the console.
 /// </summary>
 public sealed class IdentityCenterStack : Stack
 {
