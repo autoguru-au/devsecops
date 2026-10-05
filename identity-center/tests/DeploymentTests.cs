@@ -125,4 +125,34 @@ public sealed class DeploymentTests(TemplateFixture fixture)
         Assert.Equal("main", push["Branches"]!["Includes"]![0]!.GetValue<string>());
         Assert.Equal("identity-center/**", push["FilePaths"]!["Includes"]![0]!.GetValue<string>());
     }
+
+    // Change detection on the source action would start a run for every push to main, path filter or not.
+    [Fact]
+    public void Source_action_does_not_trigger_on_every_push()
+    {
+        var source = SourceAction();
+
+        Assert.False(source["Configuration"]!["DetectChanges"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Source_action_role_can_use_the_connection_under_its_renamed_prefix()
+    {
+        var roleLogicalId = SourceAction()["RoleArn"]!.GetAttTarget();
+
+        var actions = fixture.Pipeline.OfType("AWS::IAM::Policy")
+            .Where(p => p.Resource.Props()["Roles"]!.AsArray().Any(r => r!["Ref"]!.GetValue<string>() == roleLogicalId))
+            .SelectMany(p => p.Resource.Props()["PolicyDocument"]!["Statement"]!.AsArray())
+            .Where(s => s!["Resource"]!.Strings().Contains(DeployNames.GitHubConnectionArn))
+            .SelectMany(s => s!["Action"]!.Strings());
+
+        Assert.Contains("codeconnections:UseConnection", actions);
+    }
+
+    private JsonNode SourceAction()
+    {
+        var pipeline = Assert.Single(fixture.Pipeline.OfType("AWS::CodePipeline::Pipeline")).Resource.Props();
+        var stage = pipeline["Stages"]!.AsArray().Single(s => s!["Name"]!.GetValue<string>() == "Source")!;
+        return Assert.Single(stage["Actions"]!.AsArray())!;
+    }
 }

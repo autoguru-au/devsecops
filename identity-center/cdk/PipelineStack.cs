@@ -63,6 +63,19 @@ public sealed class PipelineStack : Stack
         var source = new Artifact_("Source");
         var synthesised = new Artifact_("Synthesised");
 
+        // CDK grants this role only codestar-connections:UseConnection. The connection's ARN carries the
+        // renamed codeconnections prefix, so the new action name is granted as well.
+        var sourceRole = new Role(this, "SourceActionRole", new RoleProps
+        {
+            AssumedBy = new ArnPrincipal(pipelineRole.RoleArn),
+        });
+        sourceRole.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "UseGitHubConnection",
+            Actions = new[] { "codeconnections:UseConnection" },
+            Resources = new[] { DeployNames.GitHubConnectionArn },
+        }));
+
         var sourceAction = new CodeStarConnectionsSourceAction(new CodeStarConnectionsSourceActionProps
         {
             ActionName = "GitHub",
@@ -71,6 +84,10 @@ public sealed class PipelineStack : Stack
             Repo = "devsecops",
             Branch = "main",
             Output = source,
+            Role = sourceRole,
+            // The path-filtered trigger below is the only trigger. Left on, this would start a run for
+            // every push to main.
+            TriggerOnPush = false,
         });
 
         var synth = new PipelineProject(this, "Synth", new PipelineProjectProps
