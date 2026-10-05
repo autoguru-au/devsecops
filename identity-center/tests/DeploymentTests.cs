@@ -24,7 +24,11 @@ public sealed class DeploymentTests(TemplateFixture fixture)
         var trust = RoleNamed(DeployNames.DeployActionRoleName).Props()["AssumeRolePolicyDocument"]!["Statement"]!.AsArray();
 
         var statement = Assert.Single(trust)!;
-        Assert.Equal("arn:aws:iam::791686214595:role/identity-center-pipeline", statement["Principal"]!["AWS"]!.GetValue<string>());
+        Assert.Equal("sts:AssumeRole", statement["Action"]!.GetValue<string>());
+        Assert.Contains(":iam::791686214595:root", statement["Principal"]!["AWS"].Strings().Single(x => x.Contains(":iam::")));
+        Assert.Equal(
+            "arn:aws:iam::791686214595:role/identity-center-pipeline",
+            statement["Condition"]!["ArnEquals"]!["aws:PrincipalArn"]!.GetValue<string>());
     }
 
     [Fact]

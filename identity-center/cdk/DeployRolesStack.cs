@@ -7,8 +7,9 @@ namespace IdentityCenter.Cdk;
 /// <summary>
 /// The two roles in the management account that let the shared-account pipeline deploy
 /// <see cref="IdentityCenterStack"/>. Deployed by hand, once, by a management-account administrator,
-/// after <see cref="PipelineStack"/> (IAM rejects a trust policy naming a role that does not exist).
-/// The pipeline never deploys this stack, so a change merged to main cannot widen its own access.
+/// before <see cref="PipelineStack"/>: the pipeline's artifact bucket and key policies name the deploy
+/// role, and S3 and KMS reject a policy whose principal does not exist yet. The pipeline never deploys
+/// this stack, so a change merged to main cannot widen its own access.
 ///
 /// What this hands the shared account: whoever can drive the pipeline role, or approve an execution,
 /// can change Identity Center, and Identity Center can grant any permission set in any member
@@ -85,7 +86,16 @@ public sealed class DeployRolesStack : Stack
         {
             RoleName = DeployNames.DeployActionRoleName,
             Description = "The identity-center pipeline in autoguru-shared creates and executes change sets with this role.",
-            AssumedBy = new ArnPrincipal($"arn:aws:iam::{Accounts.Shared}:role/{DeployNames.PipelineRoleName}"),
+            // The shared account's root, narrowed to the one pipeline role by aws:PrincipalArn. Naming
+            // the role directly would need it to exist first, and the pipeline needs this role to exist
+            // first. The condition is evaluated against the caller's real ARN, so it is just as narrow.
+            AssumedBy = new AccountPrincipal(Accounts.Shared).WithConditions(new Dictionary<string, object>
+            {
+                ["ArnEquals"] = new Dictionary<string, object>
+                {
+                    ["aws:PrincipalArn"] = $"arn:aws:iam::{Accounts.Shared}:role/{DeployNames.PipelineRoleName}",
+                },
+            }),
             MaxSessionDuration = Duration.Hours(1),
         });
         deploy.AddToPolicy(new PolicyStatement(new PolicyStatementProps

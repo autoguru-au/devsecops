@@ -45,7 +45,7 @@ AWS CDK in C#, like `netbird/`, under `identity-center/cdk`.
 | Stack | Account | Deployed by |
 | --- | --- | --- |
 | `IdentityCenter` | management `406422318285` | the pipeline, after manual approval |
-| `IdentityCenterDeployRoles` | management `406422318285` | a management-account admin, by hand, once |
+| `IdentityCenterDeployRoles` | management `406422318285` | a management-account admin, by hand, once, before the pipeline |
 | `IdentityCenterPipeline` | shared `791686214595` | a shared-account admin, by hand |
 
 The pipeline (`identity-center`) runs on a push to `main` that touches `identity-center/**`:
@@ -76,21 +76,24 @@ Run these in order. Steps 1 and 2 are pull requests in `autoguru-au/autoguru`.
    - change the assignment's `PrincipalId` from `!GetAtt AIOpsMlflowProductionGroup.GroupId` to the
      literal `c9ce8408-20d1-7092-0364-a9fef116a23f`.
 
-   Deploy it. The value doesn't change, so the assignment is not replaced.
+   Deploy it. The change set lists the assignment as a replacement, because the template text
+   changed. Execution compares the resolved value, which is the same id, and leaves it alone.
 2. **autoguru, release the MLflow group, part 2.** Remove `AIOpsMlflowProductionGroup` from the
    template and deploy it. The group stays live because the deployed template already says Retain.
 3. **Confirm the AIOps application ARN.** In the management account, check that
    `aws sso-admin list-applications --instance-arn arn:aws:sso:::instance/ssoins-8259316042a4e826`
    lists `IdentityCenterInstance.AiopsSamlApplicationArn` (in `cdk/Shared.cs`) as the AIOps
    application. The ARN was inferred from the SAML metadata URL. Correct it in code if it's wrong.
-4. **Deploy the pipeline** (shared account):
+4. **Deploy the deploy roles** (management account, administrator credentials):
 
    ```bash
-   cd identity-center/cdk && AWS_PROFILE=shared cdk deploy IdentityCenterPipeline
+   cd identity-center/cdk && cdk deploy IdentityCenterDeployRoles
    ```
 
-   The first run starts on creation and fails at `CreateChangeSet`, because the deploy role
-   doesn't exist yet. That's expected.
+   They go first. The pipeline's artifact bucket and key policies name the deploy role, and S3 and
+   KMS reject a policy whose principal doesn't exist. The deploy role trusts the shared account
+   only when the caller is the `identity-center-pipeline` role (`aws:PrincipalArn`), so it doesn't
+   need that role to exist yet.
 5. **Import the existing groups** (management account, administrator credentials):
 
    ```bash
@@ -99,17 +102,18 @@ Run these in order. Steps 1 and 2 are pull requests in `autoguru-au/autoguru`.
 
    This creates stack `IdentityCenter` holding only the three groups in `import-mapping.json`. The
    other resources aren't in the mapping and are skipped, so nothing is created and nothing about
-   the live groups changes.
-6. **Deploy the deploy roles** (management account, administrator credentials):
+   the live groups changes. Do this before step 6. Otherwise the pipeline's first run would try to
+   create these groups again.
+6. **Deploy the pipeline** (shared account):
 
    ```bash
-   cd identity-center/cdk && cdk deploy IdentityCenterDeployRoles
+   cd identity-center/cdk && AWS_PROFILE=shared cdk deploy IdentityCenterPipeline
    ```
 
-7. **Release the pipeline** (`aws codepipeline start-pipeline-execution --name identity-center`).
-   The change set should only add resources: the three AIOps groups, their memberships and
-   application assignments, `AIOpsEvaluation` and its assignment. It must not modify or replace an
-   imported group. Approve it.
+   It starts its first run on creation. The change set should only add resources: the three AIOps
+   groups, their memberships and application assignments, `AIOpsEvaluation` and its assignment.
+   It must not modify or replace an imported group. Review it in the management account, then
+   approve the run.
 
 After that, every change is a pull request here. The pipeline applies it after approval.
 
