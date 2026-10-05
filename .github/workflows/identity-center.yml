@@ -1,0 +1,44 @@
+name: Identity Center
+
+# Tests and synthesises the identity-center CDK app on pull requests that touch it. Read-only:
+# no AWS credentials, nothing is deployed. Deploys happen in the identity-center CodePipeline in
+# the shared account after merge to main, behind a manual approval (see identity-center/README.md).
+
+on:
+  pull_request:
+    paths:
+      - 'identity-center/**'
+      - '.github/workflows/identity-center.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: identity-center
+
+jobs:
+  test:
+    name: Test and synth
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install CDK CLI
+        # Same version as the pipeline's synth step.
+        run: npm install -g aws-cdk@2.1144.0
+
+      - name: Test
+        run: dotnet test tests -c Release
+
+      - name: Synth
+        working-directory: identity-center/cdk
+        run: cdk synth --quiet

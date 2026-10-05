@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>IdentityCenter.Cdk</RootNamespace>
+    <AssemblyName>IdentityCenter.Cdk</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Amazon.CDK.Lib" Version="2.272.0" />
+    <PackageReference Include="Constructs" Version="[10.5.0,11.0.0)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="IdentityCenter.Cdk.Tests" />
+  </ItemGroup>
+
+</Project>
