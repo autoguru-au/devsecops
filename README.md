@@ -164,6 +164,12 @@ If your repository is **internal**, ensure **GitHub Actions is enabled at the or
 
 ---
 
+## 🐶 Shared Datadog Terraform backend
+The S3 state bucket, lock table, KMS key and per-repository GitHub OIDC roles that let repositories
+manage Datadog with Terraform. See [`datadog-terraform/README.md`](datadog-terraform/README.md).
+
+---
+
 ## 📈 Future Enhancements
 - Enhance automation & reporting features.
 
