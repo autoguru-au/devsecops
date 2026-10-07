@@ -1,4 +1,5 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.EC2;
 using Amazon.CDK.AWS.SNS;
 
 namespace Netbird.Cdk;
@@ -31,6 +32,22 @@ internal static class Shared
 
     /// <summary>Zone name of <see cref="HostedZoneId"/>.</summary>
     public const string HostedZoneName = "netbird.autoguru.com.au";
+
+    /// <summary>
+    /// Amazon Linux 2023 AMI both Netbird instances run (al2023-ami-2023.12.20260706.1-kernel-6.1-x86_64).
+    /// Pinned on purpose. MachineImage.LatestAmazonLinux2023() is an SSM-parameter lookup that
+    /// CloudFormation re-resolves on EVERY deploy, and a changed ImageId replaces the instance. Once
+    /// AWS published a newer AMI (2026-10-01), any deploy, even one that changes nothing on the
+    /// instance, would have replaced both boxes: on the control plane that wipes /opt/netbird and the
+    /// management datastore (peers, users, networks). Bump this only as a planned rebuild. Patch the
+    /// running instances in place with `dnf upgrade --releasever=latest`: AL2023 locks its package
+    /// repository to the AMI's release, so a plain `dnf upgrade` stays on this AMI's packages.
+    /// </summary>
+    public const string Al2023AmiId = "ami-03eb9488a97c79445";
+
+    /// <summary>The pinned <see cref="Al2023AmiId"/> as a machine image for both instances.</summary>
+    public static IMachineImage PinnedAmazonLinux2023()
+        => MachineImage.GenericLinux(new Dictionary<string, string> { ["ap-southeast-2"] = Al2023AmiId });
 
     /// <summary>Imports the shared Slack-notifier SNS topic so alarms notify the same channel as the rest of the platform.</summary>
     public static ITopic SlackNotifierTopic(Stack stack)

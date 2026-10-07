@@ -7,6 +7,7 @@ using Amazon.CDK.AWS.KMS;
 using Amazon.CDK.AWS.Logs;
 using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.SecretsManager;
+using Amazon.CDK.AWS.SSM;
 using Constructs;
 using InstanceProps = Amazon.CDK.AWS.EC2.InstanceProps;
 using InstanceType = Amazon.CDK.AWS.EC2.InstanceType;
@@ -137,7 +138,7 @@ public class NetbirdControlPlaneStack : Stack
             // the user-data needs internet egress on first boot before the EIP is associated.
             AssociatePublicIpAddress = true,
             InstanceType = InstanceType.Of(InstanceClass.T3, InstanceSize.SMALL),
-            MachineImage = MachineImage.LatestAmazonLinux2023(),
+            MachineImage = Shared.PinnedAmazonLinux2023(),
             SecurityGroup = sg,
             Role = instanceRole,
             RequireImdsv2 = true,
@@ -250,6 +251,79 @@ public class NetbirdControlPlaneStack : Stack
         });
         jwksErrorAlarm.AddAlarmAction(new SnsAction(slackTopic));
         jwksErrorAlarm.AddOkAction(new SnsAction(slackTopic));
+
+        // TLS certificate reload (2026-10-07 incident). The dashboard's certbot renews the shared
+        // Let's Encrypt certificate, but management and signal load it once at startup and never
+        // reload it, so they served the old certificate until it expired and every client handshake
+        // failed. control-plane-tls-reload.sh restarts a service whose served certificate no longer
+        // matches the renewed one on disk, and publishes the lowest days-to-expiry. It runs as an SSM
+        // association rather than from user-data: user-data only runs on first boot, so this reaches
+        // the running instance (and any rebuild) without replacing or rebooting it.
+        const string metricNamespace = "Netbird/ControlPlane";
+        instanceRole.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = ["cloudwatch:PutMetricData"],
+            Resources = ["*"], // PutMetricData has no resource-level permissions; scoped by namespace.
+            Conditions = new Dictionary<string, object>
+            {
+                ["StringEquals"] = new Dictionary<string, object> { ["cloudwatch:namespace"] = metricNamespace },
+            },
+        }));
+        var tlsReload = new CfnAssociation(this, "TlsReloadAssociation", new CfnAssociationProps
+        {
+            Name = "AWS-RunShellScript",
+            AssociationName = "netbird-control-plane-tls-reload",
+            Targets = new object[] { new CfnAssociation.TargetProperty { Key = "InstanceIds", Values = [instance.InstanceId] } },
+            // Daily at 17:00 UTC (03:00 Brisbane), outside AU working hours: a restart briefly drops
+            // peer sessions. Renewal happens 30 days before expiry, so a daily check has ample margin.
+            ScheduleExpression = "cron(0 17 * * ? *)",
+            Parameters = new Dictionary<string, object>
+            {
+                ["commands"] = new[] { EmbeddedScript.Read("control-plane-tls-reload.sh") },
+                ["executionTimeout"] = new[] { "1800" },
+            },
+        });
+
+        // Two alarms, same shapes as the ag-vault GitHub backup job in this account. "What did it
+        // find" uses a 1-hour period with missing data not breaching, so it evaluates in the hour the
+        // daily job reports and stays OK otherwise. The script counts a failed check, failed restart
+        // or a served certificate with under 14 days left as a failure. "Did it run" uses a 25-hour
+        // window with missing data breaching: no datapoint at all is the condition it detects.
+        var tlsReloadFailures = new Metric(new MetricProps
+        {
+            Namespace = metricNamespace,
+            MetricName = "TlsReloadFailures",
+        });
+        var tlsReloadFailedAlarm = new Alarm(this, "TlsReloadFailedAlarm", new AlarmProps
+        {
+            AlarmDescription = "The Netbird TLS certificate reload job reported a failure (a stale or "
+                + "expiring certificate it could not fix). Check the netbird-control-plane-tls-reload "
+                + "association history and 'journalctl -t netbird-tls-reload' on the control plane.",
+            Metric = tlsReloadFailures.With(new MetricOptions { Period = Duration.Hours(1), Statistic = "Maximum" }),
+            Threshold = 1,
+            EvaluationPeriods = 1,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = TreatMissingData.NOT_BREACHING,
+        });
+        var tlsReloadNotRunAlarm = new Alarm(this, "TlsReloadNotRunAlarm", new AlarmProps
+        {
+            AlarmDescription = "The Netbird TLS certificate reload job has not reported in 25 hours: the "
+                + "netbird-control-plane-tls-reload association stopped running or cannot publish metrics.",
+            Metric = tlsReloadFailures.With(new MetricOptions { Period = Duration.Hours(25), Statistic = "SampleCount" }),
+            Threshold = 1,
+            EvaluationPeriods = 1,
+            ComparisonOperator = ComparisonOperator.LESS_THAN_THRESHOLD,
+            TreatMissingData = TreatMissingData.BREACHING,
+        });
+        foreach (var alarm in new[] { tlsReloadFailedAlarm, tlsReloadNotRunAlarm })
+        {
+            // The association runs once on creation; creating it first gives the alarms a datapoint.
+            alarm.Node.AddDependency(tlsReload);
+            alarm.AddAlarmAction(new SnsAction(slackTopic));
+        }
+        // No OK notification on the failure alarm: it returns to OK an hour after a failed run simply
+        // because that hour has no datapoint, which would read as "fixed" while the problem remains.
+        tlsReloadNotRunAlarm.AddOkAction(new SnsAction(slackTopic));
 
         _ = new CfnOutput(this, "ControlPlaneIp", new CfnOutputProps
         {

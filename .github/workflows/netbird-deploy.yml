@@ -7,6 +7,10 @@ name: Netbird Infrastructure
 # - Pull requests that touch netbird/** run `cdk diff` (read-only, no changes).
 # - Deploys are MANUAL (workflow_dispatch) so infra is never applied implicitly by a
 #   merge to main; an operator triggers the deploy and reviews the diff in the run log.
+# - Manual runs target ONE stack by default. The routing peer has UserDataCausesReplacement, so
+#   deploying it whenever its user-data differs from the deployed one replaces the instance and
+#   re-enrols the peer with a new identity (routers bound to the old peer stop routing, COM-175);
+#   deploy it only when a change actually needs that.
 #
 # Requires the repository secret AWS_DEPLOY_ROLE_ARN to be the ARN of an IAM role in
 # the shared account (791686214595) that this repo can assume via GitHub OIDC and that
@@ -28,6 +32,15 @@ on:
         options:
           - diff
           - deploy
+      stack:
+        description: 'Stack(s) to diff/deploy (each stack only when its own change needs it)'
+        required: true
+        default: 'NetbirdControlPlaneStack'
+        type: choice
+        options:
+          - NetbirdControlPlaneStack
+          - NetbirdRoutingPeerStack
+          - both
 
 permissions:
   id-token: write   # OIDC auth to AWS -- no stored access keys
@@ -79,10 +92,21 @@ jobs:
         if: github.event_name == 'pull_request' && env.AWS_DEPLOY_ROLE_ARN != ''
         run: cdk diff
 
+      - name: Resolve stacks (manual)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          STACK_INPUT: ${{ inputs.stack }}
+        run: |
+          if [ "$STACK_INPUT" = "both" ]; then
+            echo "STACKS=NetbirdControlPlaneStack NetbirdRoutingPeerStack" >> "$GITHUB_ENV"
+          else
+            echo "STACKS=$STACK_INPUT" >> "$GITHUB_ENV"
+          fi
+
       - name: CDK Diff (manual)
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'diff' && env.AWS_DEPLOY_ROLE_ARN != ''
-        run: cdk diff
+        run: cdk diff $STACKS
 
       - name: CDK Deploy (manual)
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy' && env.AWS_DEPLOY_ROLE_ARN != ''
-        run: cdk deploy NetbirdControlPlaneStack NetbirdRoutingPeerStack --require-approval never
+        run: cdk deploy $STACKS --require-approval never

@@ -67,7 +67,7 @@ public class NetbirdRoutingPeerStack : Stack
             // the user-data needs internet egress on first boot before the EIP is associated.
             AssociatePublicIpAddress = true,
             InstanceType = InstanceType.Of(InstanceClass.T3, InstanceSize.MICRO),
-            MachineImage = MachineImage.LatestAmazonLinux2023(),
+            MachineImage = Shared.PinnedAmazonLinux2023(),
             SecurityGroup = sg,
             Role = instanceRole,
             RequireImdsv2 = true,
