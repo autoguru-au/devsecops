@@ -119,6 +119,16 @@ chmod 0600 /opt/netbird/setup.env
 # instance role is only granted CreateLogStream/PutLogEvents on it, not CreateLogGroup, so this
 # runbook assumes the normal order (CDK deploy, then this SSM setup), not a bare re-run against an
 # account where the group was deleted.
+# NOTE (COM-219, approval settings): user_approval_required and peer_approval_enabled must both be
+# false, but they are NOT setup.env or management.json settings. They are account settings in the
+# management store, and Netbird 0.74.7 creates every new account with user_approval_required=true,
+# so a fresh store locks new users out ("user pending approval cannot add peers"). The hourly
+# netbird-control-plane-settings-guard association (control-plane-settings-guard.sh) sets them back
+# through the management API. It needs the settings-guard service user's PAT in
+# /netbird/control-plane/settings-guard-pat (netbird/README.md), so after a rebuild: log in, create
+# that service user and PAT, store it, and run the association once. The same job reports (but does
+# not edit) drift in the IdpSignKeyRefreshEnabled, PKCE RedirectURLs and DataStoreEncryptionKey
+# values of management.json, and in the setup.env pins above.
 # Peers and the routing peer enroll with a pre-shared setup key (created in the dashboard, stored in
 # Secrets Manager); the dashboard admin login uses Entra SSO via the SPA app registration.
 echo "Control plane ready. Run Netbird setup via SSM after DNS propagation (Entra flow: configure.sh, not zitadel)." >> /var/log/netbird-setup.log
