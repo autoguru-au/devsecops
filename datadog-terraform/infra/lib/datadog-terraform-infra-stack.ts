@@ -170,7 +170,11 @@ export class DatadogTerraformInfraStack extends cdk.Stack {
             'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
           },
           StringLike: {
-            'token.actions.githubusercontent.com:sub': `repo:${GITHUB_REPO}:pull_request`,
+            // Pull-request plans, and the scheduled drift check, which runs on main.
+            'token.actions.githubusercontent.com:sub': [
+              `repo:${GITHUB_REPO}:pull_request`,
+              `repo:${GITHUB_REPO}:ref:refs/heads/main`,
+            ],
           },
         },
         'sts:AssumeRoleWithWebIdentity'
@@ -272,7 +276,11 @@ export class DatadogTerraformInfraStack extends cdk.Stack {
             'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
           },
           StringLike: {
-            'token.actions.githubusercontent.com:sub': `repo:${IGNITE_GITHUB_REPO}:pull_request`,
+            // Pull-request plans, and the scheduled drift check, which runs on main.
+            'token.actions.githubusercontent.com:sub': [
+              `repo:${IGNITE_GITHUB_REPO}:pull_request`,
+              `repo:${IGNITE_GITHUB_REPO}:ref:refs/heads/main`,
+            ],
           },
         },
         'sts:AssumeRoleWithWebIdentity'
