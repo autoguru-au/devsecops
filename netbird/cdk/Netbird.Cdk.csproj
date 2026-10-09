@@ -14,7 +14,7 @@
     <PackageReference Include="Constructs" Version="[10.0.0,11.0.0)" />
   </ItemGroup>
 
-  <!-- EC2 user-data bash scripts are embedded so they ship inside the assembly (no working-dir
+  <!-- EC2 bash scripts (user-data, and the TLS reload job SSM runs on the control plane) are embedded so they ship inside the assembly (no working-dir
        dependency at synth time) while staying real .sh files: readable, lintable, and LF-enforced
        via .gitattributes so a CRLF checkout on Windows cannot break the shebang on the instance. -->
   <ItemGroup>
@@ -23,6 +23,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="..\scripts\routing-peer-user-data.sh">
       <LogicalName>routing-peer-user-data.sh</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\scripts\control-plane-tls-reload.sh">
+      <LogicalName>control-plane-tls-reload.sh</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

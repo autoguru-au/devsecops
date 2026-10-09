@@ -52,7 +52,22 @@ the assembly at build time.
 
 Deploys run via the [`netbird-deploy`](../.github/workflows/netbird-deploy.yml) workflow:
 pull requests touching `netbird/**` get a `cdk diff`; deploys are a manual `workflow_dispatch`
-(`action: deploy`). The workflow assumes `AWS_DEPLOY_ROLE_ARN` in the shared account via OIDC.
+(`action: deploy`, `stack: NetbirdControlPlaneStack | NetbirdRoutingPeerStack | both`). The workflow
+assumes `AWS_DEPLOY_ROLE_ARN` in the shared account via OIDC.
+
+Before any deploy, read the diff for an `AWS::EC2::Instance` replacement:
+
+- Both instances use a **pinned AMI** (`Shared.Al2023AmiId`). Do not go back to
+  `MachineImage.LatestAmazonLinux2023()`: CloudFormation re-resolves it on every deploy, so a new
+  AWS AMI turns any deploy into an instance replacement, which on the control plane wipes
+  `/opt/netbird` and the management datastore. Patch the running instances in place with
+  `dnf upgrade --releasever=latest` (AL2023 locks its package repository to the AMI's release).
+- A control-plane user-data change is an in-place update: CloudFormation stops and starts the
+  instance (a short outage; state on the EBS volume survives) and the new user-data does not run.
+- The routing peer has `UserDataCausesReplacement`: any user-data difference replaces it and it
+  re-enrols with a new peer identity. Any network router bound to the specific old peer (rather
+  than to a peer group) stops routing until it is re-pointed (COM-175). Deploy it only when a
+  change needs that.
 
 Prerequisite: the shared account is already CDK-bootstrapped (the existing `SharedPlatformStack`
 is deployed there via CDK), so no `cdk bootstrap` is needed.
@@ -95,6 +110,35 @@ control-plane EIP. After deploy, wait for it to resolve (Let's Encrypt needs the
    to start, or `*.autoguru.com.au`), assign the routing peer (Masquerade ON) plus an Access Policy from
    the client group to the resource group. Ask an admin to add the routing-peer EIP `54.253.102.22` to the
    Cloudflare origin allowlist.
+
+## TLS certificate reload
+
+The dashboard container's certbot renews the Let's Encrypt certificate (30 days before expiry) in
+the shared `netbird-letsencrypt` volume. Management (`:33073`) and signal (`:10000`) load that
+certificate once at startup and never reload it. Without a restart they keep serving the old
+certificate until it expires, and clients then hang on Connect with no SSO prompt. This caused the
+outage on 2026-10-07.
+
+[`control-plane-tls-reload.sh`](scripts/control-plane-tls-reload.sh) handles it. It runs as the SSM
+association `netbird-control-plane-tls-reload`, created by `NetbirdControlPlaneStack`: daily at
+17:00 UTC, and also once whenever the association is created or updated (a deploy). It restarts
+management or signal (`docker restart`, no recreate) only when the served certificate differs from
+a trusted, valid, newer certificate on disk for the right hostname with a matching key, then checks
+that the new certificate is being served. It publishes `TlsReloadFailures` and
+`TlsCertDaysToExpiry` to the `Netbird/ControlPlane` namespace. Two alarms notify the Slack topic:
+
+- `TlsReloadFailedAlarm`: the job reported a failure, including a served certificate with less
+  than 14 days left (renewal has stopped).
+- `TlsReloadNotRunAlarm`: no report for 25 hours (the job stopped running or cannot publish).
+
+Operations:
+
+- Run it now: `aws ssm start-associations-once --association-ids <id>` (or run the script by hand
+  as root on the instance).
+- Logs: the association execution history in SSM, and `journalctl -t netbird-tls-reload`.
+- Quick external check: `openssl s_client -connect netbird.autoguru.com.au:33073` (and `:10000`)
+  should show the same `notAfter` as `:443`. For up to a day after a renewal they can differ,
+  until the next daily run reloads them.
 
 ## Testing the POC (for others)
 
