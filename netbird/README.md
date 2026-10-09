@@ -167,6 +167,51 @@ Operations:
   should show the same `notAfter` as `:443`. For up to a day after a renewal they can differ,
   until the next daily run reloads them.
 
+## Settings guard
+
+Some settings that keep logins working were applied by hand and have reset before
+(COM-219). [`control-plane-settings-guard.sh`](scripts/control-plane-settings-guard.sh) runs as the
+SSM association `netbird-control-plane-settings-guard`, hourly at :15 and once when it is created
+or updated.
+
+- **Account settings, corrected.** `user_approval_required` and `peer_approval_enabled` must be
+  `false`. They are account settings in the management store, with no `setup.env`,
+  `configure.sh` or `management.json` knob in 0.74.7, and every new account starts with user
+  approval on. When the job finds either one on, it sets it back through the management API with
+  the request the dashboard's Settings > Authentication page sends (GET the account, change only
+  these two fields, PUT the settings back), then reads it back.
+- **Generated config, reported only.** In the `management.json` the management container mounts:
+  `IdpSignKeyRefreshEnabled: true`, the four PKCE `RedirectURLs`, a non-empty
+  `DataStoreEncryptionKey`. In `/opt/netbird/setup.env` and the `setup.env` that `configure.sh`
+  reads: `NETBIRD_MGMT_IDP_SIGNKEY_REFRESH=true`, the four PKCE ports, and
+  `NETBIRD_MANAGEMENT_TAG` equal to the running image. The job does not edit these files.
+- The PKCE ports are two-sided: the Entra app registration must list the same four loopback
+  redirect URIs. The job cannot see Entra.
+
+It publishes `SettingsDrift` (items found wrong this run) and `SettingsGuardFailures` (a check or
+correction did not complete). Alarms to Slack: `SettingsDriftAlarm`, `SettingsGuardFailedAlarm`,
+and `SettingsGuardNotRunAlarm` (no report for 3 hours).
+
+One-time setup, after the deploy that creates the association (and after any store rebuild). Use an
+admin PAT of your own for the first three calls, then revoke it:
+
+```bash
+API=https://netbird.autoguru.com.au:33073/api
+# 1. Service user with the admin role (admin is the lowest role that can change account settings).
+curl -sS -X POST "$API/users" -H "Authorization: Token $MY_PAT" -H 'Content-Type: application/json' \
+  -d '{"name":"settings-guard","role":"admin","auto_groups":[],"is_service_user":true}'
+# 2. Its token, 365 days (the maximum). Note the expiry date; the guard fails once it expires.
+curl -sS -X POST "$API/users/<service-user-id>/tokens" -H "Authorization: Token $MY_PAT" \
+  -H 'Content-Type: application/json' -d '{"name":"settings-guard","expires_in":365}'
+# 3. Store the returned plain_token (nbp_...). Only the instance role can read it back.
+aws secretsmanager put-secret-value --region ap-southeast-2 \
+  --secret-id /netbird/control-plane/settings-guard-pat --secret-string 'nbp_...'
+# 4. Run the guard once and read the result.
+aws ssm start-associations-once --region ap-southeast-2 --association-ids <settings-guard association id>
+```
+
+Offline tests (stub docker, aws and curl; no AWS access): `python3 -m unittest discover -s ci -v`.
+
 ## Testing the POC (for others)
 
 1. Install the Netbird desktop client. Client SSO/device-auth is disabled, so enrol with a Setup Key

@@ -325,6 +325,96 @@ public class NetbirdControlPlaneStack : Stack
         // because that hour has no datapoint, which would read as "fixed" while the problem remains.
         tlsReloadNotRunAlarm.AddOkAction(new SnsAction(slackTopic));
 
+        // Settings guard (COM-219). user_approval_required and peer_approval_enabled live in the
+        // management store, not in setup.env or management.json: Netbird creates every new account
+        // with user approval ON, so a fresh store or re-provision locks new users out ("user pending
+        // approval cannot add peers"; 16 and 27 July). control-plane-settings-guard.sh checks them
+        // hourly through the management API and sets them back to false, and reports drift in the
+        // generated config (JWKS refresh, PKCE ports, datastore key, setup.env pins) without editing
+        // it. The API call needs an admin token of a Netbird service user, stored by hand in this
+        // secret (netbird/README.md, "Settings guard"); until then the job reports a failure.
+        var settingsGuardPat = new Secret(this, "SettingsGuardPat", new SecretProps
+        {
+            SecretName = "/netbird/control-plane/settings-guard-pat",
+            Description = "Netbird admin PAT of the settings-guard service user (COM-219). Set by hand; "
+                + "rotate before its expiry (365 days at most).",
+            RemovalPolicy = RemovalPolicy.RETAIN, // DeleteSecret is denied by SCP in this account.
+        });
+        settingsGuardPat.GrantRead(instanceRole);
+        // The token is a Netbird admin credential that works from anywhere (the API port is public),
+        // so only the instance role may read it. People can still replace it (PutSecretValue).
+        settingsGuardPat.AddToResourcePolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Sid = "OnlyTheControlPlaneReadsThePat",
+            Effect = Effect.DENY,
+            Principals = [new AnyPrincipal()],
+            Actions = ["secretsmanager:GetSecretValue"],
+            Resources = ["*"],
+            Conditions = new Dictionary<string, object>
+            {
+                ["ArnNotEquals"] = new Dictionary<string, object> { ["aws:PrincipalArn"] = instanceRole.RoleArn },
+            },
+        }));
+
+        var settingsGuard = new CfnAssociation(this, "SettingsGuardAssociation", new CfnAssociationProps
+        {
+            Name = "AWS-RunShellScript",
+            AssociationName = "netbird-control-plane-settings-guard",
+            Targets = new object[] { new CfnAssociation.TargetProperty { Key = "InstanceIds", Values = [instance.InstanceId] } },
+            // Hourly, at :15 so it never overlaps the 17:00 UTC TLS reload. A reset approval flag
+            // locks out every new user until it is fixed, so a daily check is too slow.
+            ScheduleExpression = "cron(15 * * * ? *)",
+            Parameters = new Dictionary<string, object>
+            {
+                ["commands"] = new[] { EmbeddedScript.Read("control-plane-settings-guard.sh") },
+                ["executionTimeout"] = new[] { "600" },
+            },
+        });
+
+        // Same alarm shapes as the TLS reload job, at an hourly cadence: every 1-hour period has a
+        // datapoint, so OK notifications mean the problem is gone.
+        var settingsDrift = new Metric(new MetricProps { Namespace = metricNamespace, MetricName = "SettingsDrift" });
+        var settingsGuardFailures = new Metric(new MetricProps { Namespace = metricNamespace, MetricName = "SettingsGuardFailures" });
+        var settingsDriftAlarm = new Alarm(this, "SettingsDriftAlarm", new AlarmProps
+        {
+            AlarmDescription = "The Netbird settings guard found drift: user or peer approval switched back on "
+                + "(corrected automatically unless SettingsGuardFailed also fires; find out what reset it), or "
+                + "management.json / setup.env lost the JWKS refresh, the PKCE ports, the datastore key or the "
+                + "version pin (fix by hand). Details: 'journalctl -t netbird-settings-guard' on the control plane.",
+            Metric = settingsDrift.With(new MetricOptions { Period = Duration.Hours(1), Statistic = "Maximum" }),
+            Threshold = 1,
+            EvaluationPeriods = 1,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = TreatMissingData.NOT_BREACHING,
+        });
+        var settingsGuardFailedAlarm = new Alarm(this, "SettingsGuardFailedAlarm", new AlarmProps
+        {
+            AlarmDescription = "The Netbird settings guard could not complete a check or a correction (PAT missing "
+                + "or expired, management API down, or the correction did not stick). Check the "
+                + "netbird-control-plane-settings-guard association history.",
+            Metric = settingsGuardFailures.With(new MetricOptions { Period = Duration.Hours(1), Statistic = "Maximum" }),
+            Threshold = 1,
+            EvaluationPeriods = 1,
+            ComparisonOperator = ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = TreatMissingData.NOT_BREACHING,
+        });
+        var settingsGuardNotRunAlarm = new Alarm(this, "SettingsGuardNotRunAlarm", new AlarmProps
+        {
+            AlarmDescription = "The Netbird settings guard has not reported in 3 hours: the "
+                + "netbird-control-plane-settings-guard association stopped running or cannot publish metrics.",
+            Metric = settingsGuardFailures.With(new MetricOptions { Period = Duration.Hours(3), Statistic = "SampleCount" }),
+            Threshold = 1,
+            EvaluationPeriods = 1,
+            ComparisonOperator = ComparisonOperator.LESS_THAN_THRESHOLD,
+            TreatMissingData = TreatMissingData.BREACHING,
+        });
+        foreach (var alarm in new[] { settingsDriftAlarm, settingsGuardFailedAlarm, settingsGuardNotRunAlarm })
+        {
+            alarm.Node.AddDependency(settingsGuard); // the association runs once on creation
+            alarm.AddAlarmAction(new SnsAction(slackTopic));
+            alarm.AddOkAction(new SnsAction(slackTopic));
+        }
+
         _ = new CfnOutput(this, "ControlPlaneIp", new CfnOutputProps
         {
             Value = eip.Ref,
