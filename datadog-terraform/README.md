@@ -17,7 +17,7 @@ it, stay in that team's own repository.
 
 And, per consumer repository, a pair of GitHub OIDC roles and two secret shells:
 
-| Consumer | State key prefix | Write role (`main` only) | Read-only role (pull requests) | Secrets |
+| Consumer | State key prefix | Write role (`main` only) | Read-only role (pull requests, drift check on `main`) | Secrets |
 |---|---|---|---|---|
 | `autoguru-au/mfe` | `mfe-portals/` | `github-actions-terraform-datadog` | `github-actions-terraform-datadog-readonly` | `datadog/mfe-monitors/{api-key,app-key}` |
 | `autoguru-au/ignite` | `ignite/` | `github-actions-terraform-datadog-ignite` | `github-actions-terraform-datadog-ignite-readonly` | `datadog/ignite-monitors/{api-key,app-key}` |
