@@ -9,3 +9,6 @@ cdk.context.json
 # Environment / secrets
 .env
 *.env
+
+# Python
+__pycache__/

@@ -4,13 +4,22 @@ name: Netbird Infrastructure
 # autoguru-shared account. Scoped to the netbird/ subtree so unrelated devsecops changes
 # (workflows, docs) never touch this infrastructure.
 #
-# - Pull requests that touch netbird/** run `cdk diff` (read-only, no changes).
+# - Pull requests that touch netbird/** run `cdk diff` (read-only, no changes, no approval).
 # - Deploys are MANUAL (workflow_dispatch) so infra is never applied implicitly by a
-#   merge to main; an operator triggers the deploy and reviews the diff in the run log.
+#   merge to main. A deploy has two jobs (COM-219 deploy guard):
+#     1. plan: builds the app and creates a CloudFormation change set per stack without executing
+#        it (cdk deploy --method=prepare-change-set). netbird/ci/change_set_guard.py writes the
+#        resource changes to the run summary and REFUSES the change set if it removes, replaces or
+#        may replace an instance, Elastic IP, volume, KMS key or secret. A replaced control plane
+#        loses its datastore, management.json and certificates; a replaced routing peer re-enrols
+#        with a new peer ID and the routers bound to the old one stop routing (COM-175).
+#     2. deploy: runs in the `netbird-production` environment, so it waits for a required reviewer
+#        (not the person who started the run) and only runs from main. It re-checks and executes
+#        exactly the change sets from step 1, never a fresh one.
 # - Manual runs target ONE stack by default. The routing peer has UserDataCausesReplacement, so
 #   deploying it whenever its user-data differs from the deployed one replaces the instance and
 #   re-enrols the peer with a new identity (routers bound to the old peer stop routing, COM-175);
-#   deploy it only when a change actually needs that.
+#   deploy it only when a change actually needs that, with allow_instance_replacement.
 #
 # Requires the repository secret AWS_DEPLOY_ROLE_ARN to be the ARN of an IAM role in
 # the shared account (791686214595) that this repo can assume via GitHub OIDC and that
@@ -41,19 +50,41 @@ on:
           - NetbirdControlPlaneStack
           - NetbirdRoutingPeerStack
           - both
+      allow_instance_replacement:
+        description: 'Allow removing or replacing an instance, EIP, volume, KMS key or secret (planned, backed-up rebuild only)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  id-token: write   # OIDC auth to AWS -- no stored access keys
   contents: read
+
+# One manual run at a time, so a deploy waiting for approval cannot race another plan or deploy.
+# A run queued behind it waits; GitHub cancels an older queued run if a newer one is queued.
+# Pull request diffs queue per branch.
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && 'netbird-infra-manual' || format('netbird-infra-pr-{0}', github.ref) }}
+  cancel-in-progress: false
 
 defaults:
   run:
     working-directory: netbird/cdk
 
+env:
+  CDK_CLI_VERSION: 2.140.0
+  # CDK's default bootstrap deploy role. The OIDC role chains into it so the guard reads and
+  # executes change sets with the same role CDK itself uses for CloudFormation.
+  CDK_DEPLOY_ROLE_ARN: arn:aws:iam::791686214595:role/cdk-hnb659fds-deploy-role-791686214595-ap-southeast-2
+  DEPLOY_ENVIRONMENT: netbird-production
+
 jobs:
-  cdk:
-    name: CDK ${{ github.event_name == 'pull_request' && 'diff' || inputs.action }}
+  diff:
+    name: CDK diff
+    if: github.event_name == 'pull_request' || inputs.action == 'diff'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC auth to AWS -- no stored access keys
+      contents: read
     env:
       # Mapped to an env var so steps can detect whether the deploy role is configured.
       # Until an admin sets this repo secret, the AWS steps are skipped (the compile check
@@ -73,10 +104,14 @@ jobs:
       - name: Install CDK CLI
         # Pinned to the same minor as Amazon.CDK.Lib in the csproj so a floating CLI
         # release cannot surprise the pipeline with a lib/CLI version skew.
-        run: npm install -g aws-cdk@2.140.0
+        run: npm install -g "aws-cdk@$CDK_CLI_VERSION"
 
       - name: Build (compile check)
         run: dotnet build -c Release
+
+      - name: Deploy guard unit tests
+        working-directory: netbird/ci
+        run: python3 -m unittest discover -v
 
       - name: Note missing deploy role
         if: env.AWS_DEPLOY_ROLE_ARN == ''
@@ -92,10 +127,71 @@ jobs:
         if: github.event_name == 'pull_request' && env.AWS_DEPLOY_ROLE_ARN != ''
         run: cdk diff
 
-      - name: Resolve stacks (manual)
-        if: github.event_name == 'workflow_dispatch'
+      - name: CDK Diff (manual)
+        if: github.event_name == 'workflow_dispatch' && env.AWS_DEPLOY_ROLE_ARN != ''
         env:
           STACK_INPUT: ${{ inputs.stack }}
+        run: |
+          if [ "$STACK_INPUT" = "both" ]; then
+            cdk diff NetbirdControlPlaneStack NetbirdRoutingPeerStack
+          else
+            cdk diff "$STACK_INPUT"
+          fi
+
+  plan:
+    name: Plan deploy (change set, no changes applied)
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      actions: read     # read the environment protection rules
+    outputs:
+      stacks: ${{ steps.guard.outputs.stacks }}
+      change_set: ${{ steps.guard.outputs.change_set }}
+    env:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      STACK_INPUT: ${{ inputs.stack }}
+      ALLOW_REPLACEMENT: ${{ inputs.allow_instance_replacement }}
+      # Unique per run attempt. The deploy job reads it from this job's outputs, so a re-run of the
+      # deploy job alone executes these change sets or fails; it never creates new ones.
+      CHANGE_SET_NAME: gha-netbird-${{ github.run_id }}-${{ github.run_attempt }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require the deploy role
+        # A deploy must never "succeed" by skipping the AWS steps.
+        if: env.AWS_DEPLOY_ROLE_ARN == ''
+        working-directory: .
+        run: |
+          echo "::error::AWS_DEPLOY_ROLE_ARN secret is not configured; cannot deploy."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Require a protected deploy environment
+        # Fail before touching AWS rather than at the approval gate.
+        working-directory: netbird/ci
+        run: bash check-environment.sh "$GITHUB_REPOSITORY" "$DEPLOY_ENVIRONMENT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install CDK CLI
+        run: npm install -g "aws-cdk@$CDK_CLI_VERSION"
+
+      - name: Build (compile check)
+        run: dotnet build -c Release
+
+      - name: Deploy guard unit tests
+        working-directory: netbird/ci
+        run: python3 -m unittest discover -v
+
+      - name: Resolve stacks
         run: |
           if [ "$STACK_INPUT" = "both" ]; then
             echo "STACKS=NetbirdControlPlaneStack NetbirdRoutingPeerStack" >> "$GITHUB_ENV"
@@ -103,10 +199,81 @@ jobs:
             echo "STACKS=$STACK_INPUT" >> "$GITHUB_ENV"
           fi
 
-      - name: CDK Diff (manual)
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'diff' && env.AWS_DEPLOY_ROLE_ARN != ''
-        run: cdk diff $STACKS
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-southeast-2
 
-      - name: CDK Deploy (manual)
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy' && env.AWS_DEPLOY_ROLE_ARN != ''
-        run: cdk deploy $STACKS --require-approval never
+      - name: CDK Diff (for the log)
+        run: |
+          # shellcheck disable=SC2086 # STACKS is a space-separated list of stack names
+          cdk diff $STACKS
+
+      - name: Create change sets (not executed)
+        # --exclusively keeps a future stack dependency from pulling the other stack in.
+        run: |
+          # shellcheck disable=SC2086
+          cdk deploy $STACKS --exclusively --method=prepare-change-set \
+            --change-set-name "$CHANGE_SET_NAME" --require-approval never
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.CDK_DEPLOY_ROLE_ARN }}
+          role-chaining: true
+          aws-region: ap-southeast-2
+
+      - name: Check the change sets
+        id: guard
+        working-directory: netbird/ci
+        run: |
+          args=()
+          for s in $STACKS; do args+=(--stack "$s"); done
+          if [ "$ALLOW_REPLACEMENT" = "true" ]; then args+=(--allow-replacement); fi
+          echo "change_set=$CHANGE_SET_NAME" >> "$GITHUB_OUTPUT"
+          python3 change_set_guard.py check --change-set "$CHANGE_SET_NAME" "${args[@]}"
+
+  deploy:
+    name: Deploy (needs approval)
+    needs: plan
+    if: needs.plan.outputs.stacks != ''
+    runs-on: ubuntu-latest
+    # Required reviewers, prevent self-review, main only. Configured on the environment by a repo
+    # admin (netbird/README.md, "Deploy guard"); the job does not start until a reviewer approves.
+    environment: netbird-production
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+    env:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      STACKS: ${{ needs.plan.outputs.stacks }}
+      CHANGE_SET_NAME: ${{ needs.plan.outputs.change_set }}
+      ALLOW_REPLACEMENT: ${{ inputs.allow_instance_replacement }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require a protected deploy environment
+        # Authoritative check: this job only started because the environment let it. If the rules
+        # were missing (environment auto-created by GitHub, or rules removed), stop here.
+        working-directory: netbird/ci
+        run: bash check-environment.sh "$GITHUB_REPOSITORY" "$DEPLOY_ENVIRONMENT"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-southeast-2
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.CDK_DEPLOY_ROLE_ARN }}
+          role-chaining: true
+          aws-region: ap-southeast-2
+
+      - name: Re-check and execute the reviewed change sets
+        working-directory: netbird/ci
+        run: |
+          args=()
+          for s in $STACKS; do args+=(--stack "$s"); done
+          if [ "$ALLOW_REPLACEMENT" = "true" ]; then args+=(--allow-replacement); fi
+          python3 change_set_guard.py execute --change-set "$CHANGE_SET_NAME" "${args[@]}"

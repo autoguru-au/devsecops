@@ -55,6 +55,32 @@ pull requests touching `netbird/**` get a `cdk diff`; deploys are a manual `work
 (`action: deploy`, `stack: NetbirdControlPlaneStack | NetbirdRoutingPeerStack | both`). The workflow
 assumes `AWS_DEPLOY_ROLE_ARN` in the shared account via OIDC.
 
+### Deploy guard (COM-219)
+
+A deploy has two jobs:
+
+1. **Plan** creates a CloudFormation change set per stack and does not execute it
+   (`cdk deploy --method=prepare-change-set`). [`ci/change_set_guard.py`](ci/change_set_guard.py)
+   writes every resource change to the run summary and fails the run if the change set removes,
+   replaces or may replace an `AWS::EC2::Instance`, `AWS::EC2::EIP`, `AWS::EC2::Volume`,
+   `AWS::KMS::Key` or `AWS::SecretsManager::Secret`. The `allow_instance_replacement` input lets a
+   planned, backed-up rebuild through; the reviewer must agree to it.
+2. **Deploy** runs in the `netbird-production` GitHub environment: it waits for a required reviewer
+   who did not start the run, and only runs from `main`. It checks that the environment still has
+   those rules ([`ci/check-environment.sh`](ci/check-environment.sh)), re-checks the change sets and
+   executes exactly those, by name.
+
+Both stacks have termination protection, so `cdk destroy` and DeleteStack fail until someone turns
+it off on purpose. One manual run executes at a time (`concurrency`).
+
+Reviewer checklist before approving: the run started from `main`; the summary table shows the
+expected stack only; no `BLOCKED` or `ALLOWED BY INPUT` rows unless this is the planned rebuild;
+an on-demand backup of the control plane finished after the last change to it.
+
+The environment is repository configuration, not code. A repo admin creates it before this
+workflow reaches `main`: GitHub creates a missing environment with no rules the first time a job
+names it (the check above then stops the deploy, but the approval gate is gone).
+
 Before any deploy, read the diff for an `AWS::EC2::Instance` replacement:
 
 - Both instances use a **pinned AMI** (`Shared.Al2023AmiId`). Do not go back to
@@ -72,13 +98,14 @@ Before any deploy, read the diff for an `AWS::EC2::Instance` replacement:
 Prerequisite: the shared account is already CDK-bootstrapped (the existing `SharedPlatformStack`
 is deployed there via CDK), so no `cdk bootstrap` is needed.
 
-Local (requires the .NET 10 SDK and the CDK CLI, with shared-account credentials):
+Local (requires the .NET 10 SDK and the CDK CLI, with shared-account credentials). Diff only: do
+not deploy from a workstation, it skips the change-set check and the approval.
 
 ```bash
 cd netbird/cdk
 dotnet build
-npx cdk diff
-npx cdk deploy NetbirdControlPlaneStack NetbirdRoutingPeerStack --require-approval never
+npx cdk diff NetbirdControlPlaneStack
+python3 -m unittest discover -s ../ci -v   # deploy guard tests, no AWS access needed
 ```
 
 ## Post-deploy setup (manual, once)

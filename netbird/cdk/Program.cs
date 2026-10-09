@@ -18,8 +18,15 @@ public static class Program
             Region = "ap-southeast-2",
         };
 
-        _ = new NetbirdControlPlaneStack(app, "NetbirdControlPlaneStack", new StackProps { Env = env });
-        _ = new NetbirdRoutingPeerStack(app, "NetbirdRoutingPeerStack", new StackProps { Env = env });
+        // Termination protection (COM-219 deploy guard): deleting either stack destroys a stateful
+        // instance (the control-plane datastore, or the routing-peer identity every network router
+        // is bound to). With protection on, `cdk destroy` and DeleteStack fail until someone turns
+        // it off on purpose. CDK sets it on the stack when it prepares the change set; it changes
+        // no resource.
+        _ = new NetbirdControlPlaneStack(app, "NetbirdControlPlaneStack",
+            new StackProps { Env = env, TerminationProtection = true });
+        _ = new NetbirdRoutingPeerStack(app, "NetbirdRoutingPeerStack",
+            new StackProps { Env = env, TerminationProtection = true });
 
         app.Synth();
     }
